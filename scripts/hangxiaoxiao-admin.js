@@ -1,0 +1,736 @@
+(function mountHangxiaoxiaoAdmin(){
+  'use strict';
+
+  const inheritedReviewState=window.reviewState;
+
+  const HXX_PRODUCT_RULES=[
+    '一个主分组','三级分类','Prompt 生成标签','适用范围',
+    '默认关闭','增量采集','语义重复','版本冲突',
+    'AI 候选','人工审核','配置权限','正式启用','已发布版本不可覆盖','草稿可删除','下架或归档',
+    '音近字','形近字','拼音串','您是否想搜索','图文混排','视频卡片','快捷按钮','关联专题',
+    '候选实体','正式实体','失效实体','证据锚点','未命中','低置信度','用户差评','人工修正','知识缺口',
+    '模块权限','数据权限','按钮权限','只读','可操作','共享总额度','子账号用量上限','平台手动增加额度','额度调整记录',
+    '操作日志','安全审计日志','调用日志','知识使用统计','导出日志','导出统计报表','不支持知识内容批量导出',
+    '标签生成 Prompt','分类建议 Prompt','结构化提取 Prompt','搜索热词纠错 Prompt','测试 Prompt','发布版本','回滚版本',
+    '创建/分配角色','成员生命周期','角色模板','模块/数据/按钮权限','已开通功能关联','模型','基础信息','功能配置','站内通知','登录与安全日志','AI 调用日志','知识使用日志','导出记录'
+  ];
+
+  const HXX_NAV=[
+    {group:'工作台',navCategory:'workbench',icon:'home',items:[
+      {route:'home',label:'运营工作台',icon:'home'},{route:'dashboard',label:'运营大屏',icon:'dashboard'}
+    ]},
+    {group:'内容运营',items:[
+      {route:'marketing-materials',label:'营销物料',icon:'works',children:[
+        {label:'PPT',subview:'material-ppt'},{label:'朋友圈图文',subview:'material-moments'},
+        {label:'海报',subview:'material-poster'},{label:'公众号文章',subview:'material-wechat'}
+      ]},
+      {route:'acquisition',label:'AI 获客',icon:'trend',children:[
+        {route:'plan',label:'运营计划'},{route:'burst',label:'爆款追踪'},{route:'remix',label:'AI 混剪'},
+        {route:'create',label:'营销视频'},{route:'avatar',label:'数字人'}
+      ]}
+    ]},
+    {group:'知识中台',navCategory:'knowledge-center',icon:'knowledge',items:[
+      {route: 'review',label:'知识审核',icon:'review',badge:'7'},{route: 'knowledge',label:'企业大脑',icon:'knowledge'},
+      {route: 'graph',label:'知识图谱',icon:'graph'},{route: 'quality',label:'进化治理',icon:'quality'},
+      {route: 'sources',label:'数据采集',icon:'source'}
+    ]},
+    {group:'系统管理',navCategory:'system-management',icon:'settings',items:[
+      {route:'system',label:'系统设置',icon:'settings'},{route:'members',label:'成员管理',icon:'members'},
+      {route:'permissions',label:'权限管理',icon:'settings'},{route:'bind',label:'平台账号',icon:'bind'},
+      {route:'prompts',label:'提示词管理',icon:'prompt'},{route:'usage',label:'用量管理',icon:'usage'},
+      {route:'logs',label:'日志与审计',icon:'logs'}
+    ]}
+  ];
+
+  const REUSED_AI_ROUTES={
+    'marketing-materials':'marketing-materials',acquisition:'acquisition',plan:'plan',burst:'burst',remix:'remix',create:'create',avatar:'avatar',bind:'bind'
+  };
+  const CONTENT_ROUTE_PARENTS={plan:'acquisition',burst:'acquisition',remix:'acquisition',create:'acquisition',avatar:'acquisition'};
+  const MATERIAL_SUBVIEWS=new Set(['material-ppt','material-moments','material-poster','material-wechat']);
+
+  const HXX_MEMBERS=[
+    {id:'member-wei',name:'魏鑫',account:'wei.xin@hangxiaoxiao.cn',roles:['系统管理员'],scope:'全部数据',status:'启用',lastLogin:'今天 09:18'},
+    {id:'member-li',name:'李敏',account:'li.min@hangxiaoxiao.cn',roles:['内容运营','观察员'],scope:'公开知识 · 内容运营',status:'启用',lastLogin:'今天 08:42'},
+    {id:'member-zhou',name:'周审核',account:'zhou.review@hangxiaoxiao.cn',roles:['审核员'],scope:'指定知识域',status:'启用',lastLogin:'昨天 17:26'},
+    {id:'member-chen',name:'陈观察',account:'chen.viewer@hangxiaoxiao.cn',roles:['观察员'],scope:'公开知识 · 只读',status:'停用',lastLogin:'2026-08-19 11:30'}
+  ];
+  const HXX_ROLE_MATRIX=[
+    ['系统管理员',1,1,1,1,1,1],['内容运营',1,1,1,0,0,0],['审核员',1,0,0,1,1,0],['观察员',1,0,0,0,0,0]
+  ];
+  const HXX_PERMISSION_MODULES=[
+    {key:'knowledge',label:'企业大脑',buttons:['查看','上传资料','编辑','归档']},
+    {key:'review',label:'知识审核',buttons:['查看','调整','通过','驳回']},
+    {key:'sources',label:'数据采集',buttons:['查看','新增渠道','同步','启停']},
+    {key:'content',label:'内容运营',buttons:['查看','创作','编辑','发布']},
+    {key:'prompts',label:'提示词管理',buttons:['查看','编辑','测试','发布']},
+    {key:'system',label:'系统管理',buttons:['查看','成员管理','权限管理','导出日志']}
+  ];
+  const HXX_ROLE_GRANTS={
+    '系统管理员':{modules:HXX_PERMISSION_MODULES.map(item=>item.key),buttons:['全部按钮'],scope:'全部数据',permissions:Object.fromEntries(HXX_PERMISSION_MODULES.map(item=>[item.key,[...item.buttons]]))},
+    '内容运营':{modules:['knowledge','content'],buttons:['查看','上传资料','创作','编辑','发布'],scope:'公开知识 · 内容运营',permissions:{knowledge:['查看','上传资料','编辑'],content:['查看','创作','编辑','发布']}},
+    '审核员':{modules:['knowledge','review'],buttons:['查看','调整','通过','驳回'],scope:'指定知识域',permissions:{knowledge:['查看'],review:['查看','调整','通过','驳回']}},
+    '观察员':{modules:['knowledge','content'],buttons:['查看'],scope:'公开数据 · 只读',permissions:{knowledge:['查看'],content:['查看']}}
+  };
+  const HXX_ROLE_META={
+    '系统管理员':{creator:'平台预置',createdAt:'2026-07-20 09:00',builtIn:true},
+    '内容运营':{creator:'魏鑫',createdAt:'2026-07-20 10:18',builtIn:false},
+    '审核员':{creator:'魏鑫',createdAt:'2026-07-20 10:26',builtIn:false},
+    '观察员':{creator:'平台预置',createdAt:'2026-07-20 09:00',builtIn:true}
+  };
+  const HXX_ENABLED_CAPABILITIES=[
+    {key:'knowledge',label:'企业大脑与知识治理'},
+    {key:'search',label:'知识检索'},
+    {key:'graph',label:'知识图谱'},
+    {key:'content',label:'营销物料'},
+    {key:'acquisition',label:'AI 获客'},
+    {key:'avatar',label:'数字人'}
+  ];
+  const HXX_PROMPT_CATALOG=[
+    {id:'prompt-category',name:'分类建议 Prompt',featureKey:'knowledge',feature:'企业大脑与知识治理',scene:'输出三级分类路径、理由与置信度',model:'DeepSeek-V3',parameters:'温度 0.2 · 最大 1,600 tokens',version:'v3.2',status:'已发布',scope:'租户可配置',visibleToCurrentAccount:true},
+    {id:'prompt-tag',name:'标签生成 Prompt',featureKey:'knowledge',feature:'企业大脑与知识治理',scene:'根据正文、来源和适用范围生成受控标签',model:'DeepSeek-V3',parameters:'温度 0.2 · 最大 800 tokens',version:'v3.4',status:'已发布',scope:'租户可配置',visibleToCurrentAccount:true},
+    {id:'prompt-group',name:'知识自动分组 Prompt',featureKey:'knowledge',feature:'企业大脑与知识治理',scene:'根据内容主题、对象与使用场景生成分组候选',model:'DeepSeek-V3',parameters:'温度 0.2 · 最大 1,200 tokens',version:'v1.0',status:'已发布',scope:'租户可配置',visibleToCurrentAccount:true},
+    {id:'prompt-scope',name:'适用范围识别 Prompt',featureKey:'knowledge',feature:'企业大脑与知识治理',scene:'识别地域、人群、渠道、时效与公开范围候选',model:'DeepSeek-V3',parameters:'温度 0.1 · 最大 1,000 tokens',version:'v1.0',status:'已发布',scope:'租户可配置',visibleToCurrentAccount:true},
+    {id:'prompt-conflict',name:'知识冲突识别 Prompt',featureKey:'knowledge',feature:'企业大脑与知识治理',scene:'比较新旧内容并识别事实、版本与适用范围冲突',model:'通义千问-Max',parameters:'温度 0.1 · 最大 2,400 tokens',version:'v1.0',status:'已发布',scope:'平台基线 · 只读',visibleToCurrentAccount:true},
+    {id:'prompt-extract',name:'结构化提取 Prompt',featureKey:'knowledge',feature:'企业大脑与知识治理',scene:'提取法规、案例、步骤、条件和证据锚点',model:'通义千问-Max',parameters:'温度 0.1 · 最大 3,200 tokens',version:'v2.8',status:'已发布',scope:'平台基线 · 只读',visibleToCurrentAccount:true},
+    {id:'prompt-evolution',name:'优化建议识别 Prompt',featureKey:'knowledge',feature:'企业大脑与知识治理',scene:'识别未命中、低置信度与知识缺口',model:'DeepSeek-V3',parameters:'温度 0.2 · 最大 1,600 tokens',version:'v2.3',status:'已发布',scope:'租户可配置',visibleToCurrentAccount:true},
+    {id:'prompt-correction',name:'搜索热词纠错 Prompt',featureKey:'search',feature:'知识检索',scene:'处理音近字、形近字、拼音串和口语表达',model:'DeepSeek-V3',parameters:'温度 0.0 · 最大 600 tokens',version:'v2.2',status:'已发布',scope:'租户可配置',visibleToCurrentAccount:true},
+    {id:'prompt-query',name:'语义检索改写 Prompt',featureKey:'search',feature:'知识检索',scene:'将用户问题改写为多路召回查询',model:'通义千问-Max',parameters:'温度 0.1 · 最大 800 tokens',version:'v1.9',status:'已发布',scope:'平台基线 · 只读',visibleToCurrentAccount:true},
+    {id:'prompt-entity',name:'实体关系抽取 Prompt',featureKey:'graph',feature:'知识图谱',scene:'生成候选实体、关系与来源证据',model:'通义千问-Max',parameters:'温度 0.1 · 最大 2,400 tokens',version:'v2.5',status:'已发布',scope:'租户可配置',visibleToCurrentAccount:true},
+    {id:'prompt-wechat',name:'公众号文章创作 Prompt',featureKey:'content',feature:'营销物料',scene:'生成标题、摘要、正文、配图建议与合规提示',model:'DeepSeek-V3',parameters:'温度 0.7 · 最大 4,000 tokens',version:'v3.1',status:'已发布',scope:'租户可配置',visibleToCurrentAccount:true},
+    {id:'prompt-moments',name:'朋友圈图文创作 Prompt',featureKey:'content',feature:'营销物料',scene:'生成朋友圈正文、封面文案、配图建议与 CTA',model:'DeepSeek-V3',parameters:'温度 0.7 · 最大 2,400 tokens',version:'v1.0',status:'已发布',scope:'租户可配置',visibleToCurrentAccount:true},
+    {id:'prompt-poster',name:'海报内容生成 Prompt',featureKey:'content',feature:'营销物料',scene:'生成主标题、副标题、视觉描述、CTA 与合规提示',model:'DeepSeek-V3',parameters:'温度 0.6 · 最大 1,600 tokens',version:'v1.0',status:'已发布',scope:'租户可配置',visibleToCurrentAccount:true},
+    {id:'prompt-ppt',name:'PPT 大纲生成 Prompt',featureKey:'content',feature:'营销物料',scene:'根据正式知识生成汇报大纲与页面结构',model:'通义千问-Max',parameters:'温度 0.5 · 最大 3,200 tokens',version:'v2.6',status:'已发布',scope:'平台基线 · 只读',visibleToCurrentAccount:true},
+    {id:'prompt-ppt-content',name:'PPT 页面内容生成 Prompt',featureKey:'content',feature:'营销物料',scene:'根据已审核大纲生成逐页正文、图表与讲解备注',model:'通义千问-Max',parameters:'温度 0.5 · 最大 4,000 tokens',version:'v1.0',status:'已发布',scope:'平台基线 · 只读',visibleToCurrentAccount:true},
+    {id:'prompt-content-compliance',name:'内容合规检查 Prompt',featureKey:'content',feature:'营销物料',scene:'检查政策、数据、价格、承诺、版权与知识引用边界',model:'DeepSeek-V3',parameters:'温度 0.0 · 最大 1,600 tokens',version:'v1.0',status:'已发布',scope:'平台基线 · 只读',visibleToCurrentAccount:true},
+    {id:'prompt-plan',name:'获客计划生成 Prompt',featureKey:'acquisition',feature:'AI 获客',scene:'根据目标、人群、渠道与资源生成策略和任务候选',model:'DeepSeek-V3',parameters:'温度 0.5 · 最大 3,200 tokens',version:'v1.0',status:'已发布',scope:'租户可配置',visibleToCurrentAccount:true},
+    {id:'prompt-burst',name:'爆款结构分析 Prompt',featureKey:'acquisition',feature:'AI 获客',scene:'拆解热点内容的标题、开场、节奏、信息结构与 CTA',model:'DeepSeek-V3',parameters:'温度 0.3 · 最大 2,000 tokens',version:'v1.0',status:'已发布',scope:'租户可配置',visibleToCurrentAccount:true},
+    {id:'prompt-remix',name:'AI 混剪改写 Prompt',featureKey:'acquisition',feature:'AI 获客',scene:'复用参考结构并结合正式知识生成原创脚本与分镜',model:'DeepSeek-V3',parameters:'温度 0.7 · 最大 3,200 tokens',version:'v1.0',status:'已发布',scope:'租户可配置',visibleToCurrentAccount:true},
+    {id:'prompt-script',name:'获客视频脚本 Prompt',featureKey:'acquisition',feature:'AI 获客',scene:'生成钩子、口播、分镜和行动引导',model:'DeepSeek-V3',parameters:'温度 0.8 · 最大 2,400 tokens',version:'v4.0',status:'已发布',scope:'租户可配置',visibleToCurrentAccount:true},
+    {id:'prompt-avatar',name:'数字人问答 Prompt',featureKey:'avatar',feature:'数字人',scene:'基于正式知识生成可追溯的富媒体回答',model:'通义千问-Max',parameters:'温度 0.2 · 最大 1,600 tokens',version:'v3.0',status:'已发布',scope:'平台基线 · 只读',visibleToCurrentAccount:true}
+  ];
+  const HXX_PROMPT_CONTENT={
+    'prompt-category':'你是消费知识分类助手。\n请根据标题、正文、来源与适用范围，从租户已启用的分类树中选择唯一的三级分类路径。\n输出：一级分类、二级分类、三级分类、理由、置信度。\n待处理内容：{{document}}',
+    'prompt-tag':'你是消费知识标签助手。\n根据正文、来源、分类与适用范围生成 3–8 个简洁标签。\n优先使用现有受控标签，禁止输出无关、重复或过度宽泛的标签。\n待处理内容：{{document}}',
+    'prompt-group':'根据内容主题、业务对象、问题类型和使用场景生成知识分组候选。\n优先匹配已有分组；新分组需给出名称、范围、理由和受影响内容。\n只生成待审核候选。\n内容集合：{{documents}}',
+    'prompt-scope':'识别内容适用的地域、人群、渠道、时间范围和公开级别。\n输出适用范围候选、证据位置和不确定项，未经人工确认不得生效。\n内容：{{document}}',
+    'prompt-conflict':'比较新内容与当前正式知识，识别事实、时效、版本和适用范围冲突。\n逐项输出新旧值、证据、受影响引用和建议处理方式，不自动覆盖正式版本。\n新内容：{{candidate}}\n正式知识：{{formal_knowledge}}',
+    'prompt-extract':'请从输入内容中提取法规依据、适用条件、处理步骤、时限、联系方式与证据锚点。\n每个结论必须关联原文位置，不得补写原文未包含的事实。\n输出结构化 JSON。\n原文：{{document}}',
+    'prompt-evolution':'分析用户查询、召回结果和反馈，识别未命中、低置信度、用户差评和知识缺口。\n只生成优化建议，不直接修改正式知识。\n输出问题类型、证据、建议动作与优先级。\n输入：{{feedback_context}}',
+    'prompt-correction':'将用户输入中的音近字、形近字、拼音串和口语化表达纠正为消费领域标准检索词。\n保留原始意图；不确定时返回“您是否想搜索”候选。\n用户输入：{{query}}',
+    'prompt-query':'将用户问题改写为语义检索、关键词检索和别名检索三组查询。\n保留地域、时间、人群和业务对象约束。\n输出 JSON 数组。\n用户问题：{{query}}',
+    'prompt-entity':'从内容中提取主体、商品服务、法规、风险、处理动作等候选实体及关系。\n每个实体和关系必须带原文证据锚点与置信度，只生成待审核候选。\n内容：{{document}}',
+    'prompt-wechat':'你是消费权益内容编辑。\n基于已引用的正式知识，生成公众号标题、摘要、正文、配图建议和合规提示。\n不得虚构政策、数据或处置结果，文末列出知识引用。\n选题：{{topic}}\n知识：{{knowledge}}',
+    'prompt-moments':'基于正式知识和品牌语气生成朋友圈图文草稿。\n输出封面文案、正文、配图建议和 CTA；表达简洁，不得虚构政策、数据、价格或服务承诺。\n选题：{{topic}}\n知识：{{knowledge}}',
+    'prompt-poster':'基于正式知识、目标渠道和品牌视觉生成海报内容方案。\n输出主标题、副标题、视觉画面描述、CTA、尺寸适配和合规提示。\n知识：{{knowledge}}\n场景：{{scene}}',
+    'prompt-ppt':'根据正式知识和汇报目标，生成 PPT 页面大纲。\n每页输出页标题、核心结论、数据或证据、可视化建议和讲解备注。\n汇报目标：{{goal}}\n知识：{{knowledge}}',
+    'prompt-ppt-content':'根据已审核大纲和正式知识生成逐页 PPT 内容。\n每页输出正文、图表数据、来源脚注和讲解备注，不改变大纲结论，不补写无证据事实。\n大纲：{{outline}}\n知识：{{knowledge}}',
+    'prompt-content-compliance':'检查内容中的政策、数据、价格、服务承诺、版权、隐私和知识引用。\n输出阻断项、警告项、证据和修改建议；不得自动批准对外发布。\n内容：{{content}}',
+    'prompt-plan':'根据获客目标、目标人群、渠道、时间范围和可用资源生成计划候选。\n输出策略、任务、负责人建议、里程碑、指标和风险；启动前必须人工确认。\n输入：{{plan_context}}',
+    'prompt-burst':'拆解参考内容的标题、开场钩子、节奏、信息结构、情绪和 CTA。\n只总结可复用结构，不复制受保护表达，不把热点内容当作正式事实。\n参考内容：{{reference}}',
+    'prompt-remix':'复用已确认的参考结构，结合杭小消正式知识生成原创口播、分镜、字幕、配音和 CTA 草稿。\n不得复制原文表达或超出正式知识事实边界。\n结构：{{structure}}\n知识：{{knowledge}}',
+    'prompt-script':'根据目标人群、获客主题和已选知识，生成短视频脚本。\n包含开场钩子、口播、分镜、屏幕字幕、素材建议和行动引导。\n不得超出正式知识的事实边界。\n任务：{{campaign}}',
+    'prompt-avatar':'你是杭小消数字人。\n仅根据检索到的正式知识回答，先给结论，再给步骤和注意事项。\n对图片、视频和快捷入口给出富媒体卡片建议，并标注知识来源。\n问题：{{query}}\n知识：{{knowledge}}'
+  };
+  const HXX_LOG_RECORDS=[
+    {type:'operation',label:'操作日志',time:'10:24:18',actor:'魏鑫',action:'审核发布',object:'知识 KB-2841 v2.1',result:'成功',tone:'ok'},
+    {type:'login',label:'登录与安全日志',time:'10:23:02',actor:'李敏',action:'账号登录',object:'杭小消专属租户',result:'成功',tone:'ok'},
+    {type:'ai',label:'AI 调用日志',time:'10:22:03',actor:'数字人',action:'富媒体检索',object:'命中 3 条正式知识 · 1.26 秒',result:'成功',tone:'info'},
+    {type:'knowledge',label:'知识使用日志',time:'10:20:41',actor:'公众号文章 Agent',action:'引用正式知识',object:'KB-1028 · 消费维权证据清单',result:'已引用',tone:'info'},
+    {type:'export',label:'导出记录',time:'10:18:40',actor:'魏鑫',action:'导出统计报表',object:'2026年8月知识使用统计',result:'已完成',tone:'ok'}
+  ];
+  const HXX_NOTIFICATION_RULES={
+    'knowledge-review':{event:'知识候选进入待审核',receiver:'拥有知识审核权限的账号',route:'review'},
+    'quota-warning':{event:'租户共享额度低于 20%',receiver:'系统管理员账号',route:'usage'},
+    'prompt-version':{event:'Prompt 发布或回滚',receiver:'系统管理员账号与有提示词权限的账号',route:'prompts'}
+  };
+  const HXX_NOTIFICATIONS=[
+    {id:'notice-review',rule:'knowledge-review',title:'有 7 条知识待审核',time:'5 分钟前',summary:'新采集和上传的内容已完成 AI 分类与标签建议，等待人工审核。',unread:true},
+    {id:'notice-prompt',rule:'prompt-version',title:'Prompt“标签生成”已发布 v3.4',time:'1 小时前',summary:'新版本已关联 DeepSeek-V3，租户已开通的知识标签场景开始使用该版本。',unread:true},
+    {id:'notice-quota',rule:'quota-warning',title:'本月共享额度剩余 18%',time:'昨天 18:20',summary:'当前已低于 20% 预警线，请前往用量管理查看子账号消耗情况。',unread:true}
+  ];
+  let promptFeatureFilter='all';
+  let promptSearchQuery='';
+  let logTypeFilter='all';
+  let activeNotificationId='';
+
+  const HXX_KNOWLEDGE_DOMAINS=[
+    {name:'法律法规',mark:'法',count:1842,description:'国家与地方消费法律政策',tone:'blue'},
+    {name:'咨询问答',mark:'问',count:3260,description:'高频问题与办事指引',tone:'cyan'},
+    {name:'典型案例',mark:'案',count:986,description:'维权案例与处置依据',tone:'orange'},
+    {name:'消费提示',mark:'示',count:1418,description:'风险预警与消费提醒',tone:'green'},
+    {name:'政策资讯',mark:'政',count:624,description:'权威动态与政策解读',tone:'violet'},
+    {name:'宣传素材',mark:'素',count:512,description:'图片、音频与视频原件',tone:'rose'}
+  ];
+
+  const HXX_KNOWLEDGE_FILTERS=[
+    {key:'field',label:'消费领域',values:['全部','食品','家电','网购','医美','预付卡','汽车','房产','养老反诈']},
+    {key:'modality',label:'内容模态',values:['全部','文本','图片','视频','音频','文档']},
+    {key:'category',label:'内容分类',values:['全部',...HXX_KNOWLEDGE_DOMAINS.map(item=>item.name)]},
+    {key:'topic',label:'热点专题',values:['全部','315','双11','养老反诈']}
+  ];
+
+  const HXX_KNOWLEDGE_ITEMS=[
+    {id:'law-55',domain:'法律法规',field:'通用消费',modality:'文本',topics:['315'],mark:'法',type:'文本',title:'《消费者权益保护法》第55条：惩罚性赔偿条款解读',category:'法规政策 / 国家法律 / 消费权益',version:'v2.1',status:'已发布',tone:'ok',tags:['惩罚性赔偿','退一赔三'],source:'国家法律法规数据库',scope:'杭州地区 · 社会公众 · 当前有效',updated:'2026-08-24 10:24',summary:'经营者提供商品或者服务有欺诈行为的，应当按照消费者要求增加赔偿其受到的损失。',body:'本知识单元保留法规原文、条款位置与官方链接，并关联常见适用条件、举证要点和杭州地区办事渠道。',related:['欺诈行为认定指引','消费维权证据清单','典型案例：虚假宣传退一赔三'],aliases:['退一赔三','欺诈赔偿']},
+    {id:'qa-prepay-close',domain:'咨询问答',field:'预付卡',modality:'文本',topics:['315'],mark:'问',type:'问答',title:'预付卡商家闭店如何维权',category:'维权服务 / 预付消费 / 退款',version:'v1.3',status:'已发布',tone:'ok',tags:['预付消费','商家跑路'],source:'杭小消咨询问答库',scope:'杭州地区 · 社会公众 · 当前有效',updated:'2026-08-23 16:40',summary:'先固定付款和商家停止经营证据，再联系发卡主体协商退款；协商无果可通过全国12315平台投诉。',body:'办理步骤包括保存合同与付款凭证、确认商家主体、提交退款诉求、向监管渠道投诉，并根据金额和证据情况选择调解或诉讼。',related:['预付式消费退款办理步骤','预付式消费风险提示','查看投诉入口'],aliases:['预付款退定','预付款退订','商家闭店','预付卡退款']},
+    {id:'qa-prepay-refund',domain:'咨询问答',field:'预付卡',modality:'图片',topics:['315'],mark:'问',type:'图文',title:'预付式消费退款办理步骤',category:'维权服务 / 预付消费 / 办事流程',version:'v1.6',status:'已发布',tone:'ok',tags:['退款流程','证据留存'],source:'杭州市消保委业务指引',scope:'杭州地区 · 消费者 · 当前有效',updated:'2026-08-22 09:18',summary:'按照“核对主体—固定证据—协商退款—投诉调解—司法救济”五步处理预付消费退款。',body:'图文步骤可直接用于杭小消富媒体应答，包含办理材料、投诉渠道、处理时限与常见风险提示。',related:['预付卡商家闭店如何维权','预付消费合同注意事项','三分钟看懂预付卡维权'],aliases:['预付款退定','预付款退订','退款办理']},
+    {id:'case-medical',domain:'典型案例',field:'医美',modality:'视频',topics:['315'],mark:'案',type:'视频',title:'医美纠纷典型案例：机构虚假宣传责任认定',category:'典型案例 / 服务消费 / 医疗美容',version:'v1.0',status:'待审核',tone:'warn',tags:['虚假宣传','医美消费'],source:'杭州市消保委案例库',scope:'内部审核可见 · 杭州地区',updated:'2026-08-21 14:05',summary:'案例梳理广告承诺、合同约定与实际服务之间的差异，提炼消费者举证和协商要点。',body:'视频原件、转写文本和案例摘要已完成解析，需审核隐私脱敏与公开范围后方可正式发布。',related:['医疗美容消费提示','广告法相关条款','服务合同证据清单'],aliases:['医美纠纷','虚假宣传']},
+    {id:'tip-online',domain:'消费提示',field:'网购',modality:'图片',topics:['双11'],mark:'示',type:'图文',title:'网络购物七日无理由退货注意事项',category:'消费提示 / 网络消费 / 退换货',version:'v1.2',status:'已发布',tone:'ok',tags:['七日无理由','网络购物'],source:'杭州市消保委微信公众号',scope:'社会公众 · 全渠道',updated:'2026-08-20 11:30',summary:'七日无理由退货不等于无条件退货，消费者应注意商品完好标准、例外商品和退货运费约定。',body:'内容已关联法规原文、适用例外、操作步骤和投诉入口，可供数字人、微官网和AIGC引用。',related:['消费者权益保护法第25条','网购退货常见问答','发起消费投诉'],aliases:['七天无理由','网购退货']},
+    {id:'policy-prepay',domain:'政策资讯',field:'预付卡',modality:'文档',topics:['315'],mark:'政',type:'文档',title:'预付式消费监管政策更新要点',category:'政策资讯 / 地方政策 / 预付消费',version:'v1.1',status:'已发布',tone:'ok',tags:['政策更新','预付监管'],source:'杭州市场监管发布',scope:'杭州地区 · 业务人员与公众',updated:'2026-08-19 08:45',summary:'归纳经营主体责任、资金风险提示和消费者权益保护相关的新要求。',body:'正式版本已完成来源核验，旧版本保留历史引用并停止参与新的问答召回。',related:['预付消费风险提示','监管政策原文','本周政策更新周报'],aliases:['预付监管','预付新规']},
+    {id:'asset-video',domain:'宣传素材',field:'预付卡',modality:'视频',topics:['315'],mark:'素',type:'视频',title:'三分钟看懂预付卡维权',category:'宣传素材 / 视频 / 预付消费',version:'v1.0',status:'已发布',tone:'ok',tags:['科普视频','预付消费'],source:'消保委原创素材',scope:'全渠道可用 · 版权已确认',updated:'2026-08-18 15:20',summary:'面向消费者的短视频，讲解预付卡消费前核验、付款留证和闭店退款处理方法。',body:'保留视频原件、字幕、封面、版权信息和可检索文字描述，可作为数字人回答与内容创作的富媒体素材。',related:['预付式消费退款办理步骤','预付式消费风险提示','视频字幕与封面'],aliases:['预付卡视频','维权视频']}
+  ];
+  const formalKnowledgeItems=()=>HXX_KNOWLEDGE_ITEMS.filter(item=>item.status==='已发布');
+
+  const HXX_REVIEW_WORK_ITEMS=[
+    {id:'review-medical',mark:'MP4',name:'医美纠纷典型案例视频.mp4',source:'杭州市消保委案例库 · 采集渠道 · 今天 14:05',domain:'典型案例',candidates:[{id:'medical-case',knowledgeId:'case-medical',title:'机构虚假宣传责任认定',value:'视频原件、转写文本和案例摘要已形成可发布候选。',state:'pending',category:'典型案例 / 服务消费 / 医疗美容',tags:'虚假宣传 · 医美消费',scope:'杭州地区 · 社会公众 · 脱敏后公开',locator:'视频 00:18–02:46 · 来源页第 3 段',action:'审核并发布'}]},
+    {id:'review-live-group',mark:'AI',name:'近 30 日消费热点与高频咨询汇总',source:'趋势内容 + 咨询日志 · 今天 11:30',domain:'直播购物与带货',candidates:[{id:'live-group',title:'新建知识分组：直播购物与带货',value:'AI 识别到 37 条内容共同指向直播承诺、售后举证和主体责任。',state:'pending',category:'咨询问答 / 网络消费 / 直播电商',tags:'直播带货 · 售后举证',scope:'杭州地区 · 业务人员与公众',locator:'AI 自动分组建议 · 37 条候选共同指向',action:'审核并启用'}]},
+    {id:'review-prepay-rule',mark:'PDF',name:'预付式消费管理办法（更新稿）.pdf',source:'国家法律法规数据库 · 昨天 18:12',domain:'法律法规',candidates:[{id:'prepay-version',title:'预付式消费退款与终止经营条款',value:'新版本与当前 v1.6 的处理时限存在差异，18 条知识正在引用旧版本。',state:'conflict',category:'法律法规 / 地方政策 / 预付消费',tags:'预付消费 · 退款时限 · 版本更新',scope:'杭州地区 · 当前有效',locator:'第 12 条、第 18 条 · 对比现行版 v1.6',action:'采用新版本'}]},
+    {id:'review-platform-entity',mark:'ENT',name:'咨询问答实体抽取批次 #0825',source:'杭小消咨询问答日志 · 昨天 16:40',domain:'知识图谱',candidates:[{id:'platform-entity',title:'“网络交易平台”与“电商平台”实体合并',value:'AI 判断两个名称可能为同义实体，需确认标准名称和历史关系保留方式。',state:'pending',category:'责任主体 / 网络交易 / 平台',tags:'网络交易平台 · 电商平台 · 同义实体',scope:'内部图谱 · 全渠道检索',locator:'批次 #0825 · 26 次共现 · 4 条正式知识',action:'确认实体'}]}
+  ];
+  const HXX_REVIEW_CATEGORY_OPTIONS=['典型案例 / 服务消费 / 医疗美容','典型案例 / 服务消费 / 医美纠纷','咨询问答 / 网络消费 / 直播电商','法律法规 / 地方政策 / 预付消费','责任主体 / 网络交易 / 平台'];
+  const HXX_REVIEW_SCOPE_OPTIONS=['杭州地区 · 社会公众 · 脱敏后公开','杭州地区 · 业务人员与公众','杭州地区 · 当前有效','内部图谱 · 全渠道检索'];
+  const expandedReviewWorkItems=new Set(['review-medical']);
+  const editingReviewCandidates=new Set();
+  const rejectingReviewCandidates=new Set();
+  const reviewCategoryFilters=new Set();
+  let reviewSearchQuery='';
+  let reviewTaskTypeFilter='all';
+  let reviewOrigin='';
+  let optimizationSuggestionFilter='all';
+  let qualityMaintenanceFocus='';
+  let activeContentSubview='material-ppt';
+  let showcaseClockTimer=0;
+
+  const HXX_EVOLUTION_CANDIDATES=[
+    {id:'minor-refund',title:'补充未成年人游戏充值退款知识',reason:'近 7 日出现 18 次未命中，其中 6 次被标记为回答未解决。',score:88,kind:'知识补全建议',maintenanceType:'knowledge-gap',signal:'未命中 · 用户差评',status:'pending'},
+    {id:'prepay-term',title:'采用“预付款退定 → 预付款退订”纠错建议',reason:'连续 12 次人工修正指向同一检索词，建议纳入热词纠错。',score:84,kind:'检索纠错建议',maintenanceType:'search-correction',signal:'人工修正 · 搜索日志',status:'pending'},
+    {id:'live-evidence',title:'直播购物回答优先关联举证指引',reason:'低置信度与用户差评集中在“口头承诺如何举证”。',score:79,kind:'内容推荐建议',maintenanceType:'ranking',signal:'低置信度 · 用户差评',status:'pending'}
+  ];
+
+  const knowledgeState={view:'query',manageGroup:'全部正式知识',manageType:'全部',domain:'全部知识',query:'',searchMode:'keyword',selectedId:'law-55',field:'全部',modality:'全部',category:'全部',topic:'全部'};
+
+  const routeMeta={
+    home:['运营工作台','总览 · 待办 · 运行状态'],'marketing-materials':['营销物料','PPT · 朋友圈图文 · 海报 · 公众号文章'],
+    acquisition:['AI 获客','运营计划 · 爆款追踪 · AI 混剪 · 营销视频 · 数字人'],plan:['运营计划','企业情况 → 计划确认 → 正式任务'],burst:['爆款追踪','趋势追踪 · 对标拆解'],
+    remix:['AI 混剪','素材 → 确认 → Remotion 成片'],create:['营销视频','场景 → 知识 → 完整内容'],avatar:['数字人','形象 · 声音 · 视频任务'],knowledge:['企业大脑','知识查询 · 知识管理'],
+    sources:['数据采集','采集渠道 · 同步 · 启停'],review:['知识审核','知识审核 · 优化建议'],graph:['知识图谱','实体 · 关系 · 证据'],
+    quality:['进化治理','效果复盘 · 维护中心'],dashboard:['运营大屏','知识 · 服务 · 热点 · 运行'],usage:['用量管理','额度 · 子账号 · 明细'],
+    logs:['日志与审计','操作 · 登录与安全 · AI 调用 · 知识使用 · 导出'],members:['成员管理','成员生命周期 · 角色分配'],permissions:['权限管理','角色 · 模块 · 数据 · 按钮'],prompts:['提示词管理','功能关联 · 模型 · 测试 · 发布 · 回滚'],
+    system:['系统设置','企业信息'],bind:['平台账号','统一账号绑定']
+  };
+
+  const icon=(name)=>{
+    const paths={home:'M4 11l8-7 8 7v9H4z M9 20v-6h6v6',spark:'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z',trend:'M4 17l5-5 4 3 7-8 M16 7h4v4',works:'M4 5h16v14H4z M8 9h8 M8 13h5',avatar:'M12 12a4 4 0 100-8 4 4 0 000 8z M5 21a7 7 0 0114 0',knowledge:'M5 4h12a2 2 0 012 2v14H7a2 2 0 01-2-2z M9 8h6 M9 12h6',source:'M12 4c4 0 7 1.3 7 3s-3 3-7 3-7-1.3-7-3 3-3 7-3z M5 7v5c0 1.7 3 3 7 3s7-1.3 7-3V7 M5 12v5c0 1.7 3 3 7 3s7-1.3 7-3v-5',review:'M9 12l2 2 4-5 M4 4h16v16H4z',graph:'M6 6h.01 M18 6h.01 M12 18h.01 M6 6l6 12 6-12',quality:'M4 17l4-5 4 3 4-8 4 3',dashboard:'M4 4h7v7H4z M13 4h7v4h-7z M13 10h7v10h-7z M4 13h7v7H4z',usage:'M12 3a9 9 0 109 9 M12 7v5l3 2',logs:'M5 4h14v16H5z M8 8h8 M8 12h8 M8 16h5',members:'M8 12a4 4 0 100-8 4 4 0 000 8z M2 21a6 6 0 0112 0 M17 11a3 3 0 100-6 M16 15a5 5 0 015 5',prompt:'M4 5h16v11H8l-4 4z M8 9h8 M8 12h5',settings:'M12 9a3 3 0 100 6 3 3 0 000-6z M19 12a7 7 0 00-.1-1l2-1.5-2-3.4-2.4 1A7 7 0 0015 6l-.4-2.6h-4L10 6a7 7 0 00-1.5 1.1l-2.4-1-2 3.4L6.2 11a7 7 0 000 2L4 14.5l2 3.4 2.4-1A7 7 0 0010 18l.5 2.6h4L15 18a7 7 0 001.5-1.1l2.4 1 2-3.4-2-1.5a7 7 0 00.1-1z'};
+    return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="${paths[name]||paths.home}"/></svg>`;
+  };
+
+  const lead=(title,_subtitle,actions='')=>`<div class="lead hxx-lead"><div class="hxx-lead-copy"><div class="t">${title}</div></div><div class="hxx-actions">${actions}</div></div>`;
+  const badge=(text,tone='')=>`<span class="hxx-badge ${tone}">${text}</span>`;
+  const button=(label,action,tone='')=>`<button type="button" class="btn ${tone}" data-hxx-action="${action}">${label}</button>`;
+  const page=(route,content)=>{let el=document.querySelector(`.page[data-p="${route}"]`);if(!el){el=document.createElement('section');el.className='page';el.dataset.p=route;document.querySelector('.main').appendChild(el);}el.innerHTML=content;return el;};
+
+  function homePage(){return `${lead('知识运营工作台','围绕采集、审核、发布和使用情况处理当天任务',button('查看运营大屏','route-dashboard')+button('上传知识','upload-demo','pri'))}
+    <div class="hxx-kpis"><div class="hxx-kpi"><small>正式知识</small><b>8,642</b><span>本周新增 96</span></div><div class="hxx-kpi"><small>今日采集候选</small><b>142</b><span>20 个数据源运行中</span></div><div class="hxx-kpi warn"><small>待人工处理</small><b>17</b><span>含 3 项版本冲突</span></div><div class="hxx-kpi"><small>知识调用</small><b>12,480</b><span>平均响应 1.26 秒</span></div></div>
+    <div class="hxx-grid"><section class="hxx-panel"><div class="hxx-panel-head"><h3>今日待办</h3><span class="spacer"></span>${badge('7 项优先处理','warn')}</div><div class="hxx-table-wrap"><table class="hxx-table"><thead><tr><th>任务</th><th>来源</th><th>风险</th><th>状态</th><th>操作</th></tr></thead><tbody>
+    <tr><td><b>预付式消费新规更新</b><small>检测到旧版本仍在使用</small></td><td>法规网站</td><td>${badge('高风险','dng')}</td><td>版本冲突</td><td>${button('去审核','route-review','sm pri')}</td></tr>
+    <tr><td><b>AI 建议新建“直播购物”分组</b><small>需人工确认分组名称和适用范围</small></td><td>趋势内容</td><td>${badge('中风险','warn')}</td><td>待确认</td><td>${button('去审核','route-review','sm')}</td></tr>
+    <tr><td><b>“预付款退定”低置信度问题</b><small>连续 12 次未稳定命中</small></td><td>数字人</td><td>${badge('知识缺口','info')}</td><td>待补全</td><td>${button('查看缺口','route-quality','sm')}</td></tr>
+    </tbody></table></div></section><aside class="hxx-stack"><section class="hxx-panel"><div class="hxx-panel-head"><h3>采集运行状态</h3><span class="spacer"></span>${badge('18 正常 · 2 待处理','ok')}</div><div class="hxx-panel-body hxx-list"><div class="hxx-list-item"><div><b>公众号与官方网站</b><p>最近同步：10:24 · 新增 38 条</p></div>${badge('正常','ok')}</div><div class="hxx-list-item"><div><b>咨询问答日志</b><p>识别未命中与高频问题</p></div>${badge('3 项建议','warn')}</div><div class="hxx-list-item"><div><b>消费热点监测</b><p>只进入趋势与缺口分析</p></div>${badge('运行中','info')}</div></div></section><section class="hxx-callout"><b>治理边界</b><span>未经人工审核的采集内容、AI 分类和实体候选不会成为正式知识。</span></section></aside></div>`;}
+
+  function knowledgeResult(item){return `<button type="button" class="hxx-knowledge-result${item.id===knowledgeState.selectedId?' on':''}" data-hxx-knowledge-result="${item.id}" data-domain="${item.domain}" data-field="${item.field}" data-modality="${item.modality}"><span class="hxx-knowledge-mark">${item.mark}</span><span class="hxx-knowledge-result-copy"><span class="hxx-knowledge-result-top"><b>${item.title}</b>${badge(item.status,item.tone)}</span><small>${item.field} · ${item.category}</small><span class="hxx-tags">${item.tags.map(tag=>`<span class="hxx-tag">${tag}</span>`).join('')}</span><em>${item.source} · ${item.updated}</em></span><span class="hxx-knowledge-version">${item.type}<br>${item.version}</span></button>`;}
+
+  function knowledgePreview(item){if(!item)return '<div class="hxx-knowledge-empty"><b>未找到可预览内容</b><span>请调整关键词或清空筛选条件。</span></div>';return `<div class="hxx-knowledge-preview-head"><span class="hxx-knowledge-mark large">${item.mark}</span><div><small>${item.domain} · ${item.type}</small><h3>${item.title}</h3><div class="hxx-tags">${item.tags.map(tag=>`<span class="hxx-tag">${tag}</span>`).join('')}</div></div>${badge(item.status,item.tone)}</div><div class="hxx-knowledge-preview-body"><p class="hxx-knowledge-summary">${item.summary}</p><p>${item.body}</p><dl><div><dt>消费领域</dt><dd>${item.field}</dd></div><div><dt>内容模态</dt><dd>${item.modality}</dd></div><div><dt>来源</dt><dd>${item.source}</dd></div><div><dt>版本</dt><dd>${item.version} · ${item.updated}</dd></div><div><dt>适用范围</dt><dd>${item.scope}</dd></div><div><dt>三级分类</dt><dd>${item.category}</dd></div></dl><div class="hxx-related"><b>关联内容</b>${item.related.map(text=>`<span>${text}</span>`).join('')}</div><div class="hxx-actions"><button type="button" class="btn sm" data-hxx-action="query-source">查看原件</button><button type="button" class="btn sm pri" data-hxx-action="query-feedback">反馈有误</button></div></div>`;}
+
+  function managementType(item){
+    if(['图片','视频','音频'].includes(item.modality))return '素材';
+    if(['法律法规','政策资讯'].includes(item.domain))return '硬事实';
+    return '文档 / 规则';
+  }
+
+  function managedFormalRow(item){
+    const type=managementType(item),permission=item.scope.includes('内部')?'业务人员可见':'全员可查',agent=item.domain==='宣传素材'?'内容 / 数字人':'问答 / AIGC';
+    return `<article class="hxx-management-formal-row" data-hxx-managed-formal="${item.id}" data-group="${item.domain}" data-type="${type}"><span class="hxx-knowledge-mark">${item.mark}</span><div class="hxx-management-formal-copy"><b>${item.title}</b><small>来源：${item.source} · ${item.version} · ${item.updated}</small><div class="hxx-tags"><span class="hxx-tag">${permission}</span><span class="hxx-tag ok">${agent}</span><span class="hxx-tag">${item.scope}</span></div></div><span class="hxx-management-kind">${type}</span>${badge(item.status,item.tone)}<div class="hxx-management-row-actions"><button type="button" class="btn sm gho" data-hxx-action="managed-detail" data-knowledge-id="${item.id}">详情</button><button type="button" class="btn sm gho" data-hxx-action="managed-version" data-knowledge-id="${item.id}">版本</button></div></article>`;
+  }
+
+  function managementGroupButton(name,count){return `<button type="button" class="${knowledgeState.manageGroup===name?'on':''}" data-hxx-management-group="${name}"><span></span>${name}<em>${count}</em></button>`;}
+
+  function knowledgePage(){
+    const formalItems=formalKnowledgeItems(),pendingItems=HXX_KNOWLEDGE_ITEMS.filter(item=>item.status!=='已发布');
+    const filterRows=HXX_KNOWLEDGE_FILTERS.map(filter=>`<div class="hxx-filter-row"><span>${filter.label}</span><div>${filter.values.map(value=>`<button type="button" class="${value==='全部'?'on':''}" data-hxx-knowledge-filter="${filter.key}" data-hxx-filter-value="${value}">${value==='全部'?'不限':value}</button>`).join('')}</div></div>`).join('');
+    return `${lead('企业大脑','同一知识底座，业务侧查询与管理侧治理分开使用',button('上传资料','upload-demo','pri'))}
+    <div class="hxx-knowledge-view-tabs" role="tablist"><button type="button" class="on" data-hxx-knowledge-view="query">知识查询</button><button type="button" data-hxx-knowledge-view="manage" data-hxx-permission="knowledge.manage">知识管理</button></div>
+    <section id="hxxKnowledgeWorkspace" class="hxx-knowledge-brain" data-hxx-knowledge-panel="query" data-mode="overview" data-search-mode="keyword">
+      <div class="hxx-query-intro"><b>全部正式知识</b>${badge(`${formalItems.length} 条示例知识`,'info')}</div>
+      <div class="hxx-knowledge-search"><div class="hxx-search-box"><label for="hxxKnowledgeSearch">搜索正式知识</label><input id="hxxKnowledgeSearch" class="inp" aria-label="搜索正式知识" placeholder="搜索知识标题、正文、标签或口语问题，如“预付款退定”"><button type="button" class="btn pri" data-hxx-action="knowledge-search">搜索</button></div><div class="hxx-search-controls"><div class="seg"><button type="button" class="on" data-hxx-search-mode="keyword">关键词</button><button type="button" data-hxx-search-mode="semantic">语义检索</button></div><button type="button" class="text-button" data-hxx-action="knowledge-clear">清空</button></div></div>
+      <div class="hxx-multimodal-filters" aria-label="多模态知识筛选">${filterRows}</div>
+      <div id="hxxKnowledgeSearchSummary" class="hxx-search-summary" hidden></div>
+      <div class="hxx-knowledge-workspace"><section class="hxx-knowledge-results"><div class="hxx-knowledge-results-head"><div><b id="hxxKnowledgeResultTitle">全部正式知识</b><span id="hxxKnowledgeResultCount" data-count="${formalItems.length}">共 ${formalItems.length} 条示例结果</span></div>${badge('内容与原件可预览','info')}</div><div id="hxxKnowledgeResults">${formalItems.map(knowledgeResult).join('')}</div></section><aside id="hxxKnowledgePreview" class="hxx-knowledge-preview">${knowledgePreview(formalItems[0])}</aside></div>
+    </section>
+    <section class="hxx-knowledge-manage" data-hxx-knowledge-panel="manage" hidden>
+      <div class="hxx-management-note">正式知识与内容资产分层管理；AI 自动分组只生成建议，候选内容不会进入业务查询。</div>
+      <section class="hxx-panel hxx-management-auto-group"><div class="hxx-panel-head"><h3>AI 自动分组</h3><span class="spacer"></span><button type="button" class="hxx-management-review-shortcut" data-hxx-action="route-review"><span>待审核任务</span><b>${pendingItems.length} 项</b><em>去审核</em></button></div><div class="hxx-management-domain-tags">${HXX_KNOWLEDGE_DOMAINS.map(domain=>`<span>${domain.name}</span>`).join('')}</div></section>
+      <section class="hxx-management-data-shell">
+        <div class="hxx-management-layout"><nav class="hxx-management-groups" aria-label="正式知识分组"><button type="button" class="on" data-hxx-management-group="全部正式知识"><span></span>全部正式知识<em>${formalItems.length}</em></button>${HXX_KNOWLEDGE_DOMAINS.map(domain=>managementGroupButton(domain.name,formalItems.filter(item=>item.domain===domain.name).length)).join('')}</nav>
+          <div class="hxx-management-main"><section class="hxx-panel hxx-management-filter"><div><b id="hxxManagementGroupTitle">全部正式知识</b><span>跨知识域检索 · 仅展示当前账号有权管理的内容</span></div><div class="hxx-management-types"><button type="button" class="on" data-hxx-management-type="全部">全部</button><button type="button" data-hxx-management-type="硬事实">硬事实</button><button type="button" data-hxx-management-type="文档 / 规则">文档 / 规则</button><button type="button" data-hxx-management-type="素材">素材</button></div><small>权限摘要：当前身份为“知识管理员” · 查看、编辑、版本、下架等动作继续按按钮权限校验</small></section>
+          <section class="hxx-panel hxx-management-formal"><div class="hxx-panel-head"><h3>正式知识</h3><span class="spacer"></span><span id="hxxManagedFormalCount">共 ${formalItems.length} 条示例知识</span></div><div id="hxxManagedFormalList">${formalItems.map(managedFormalRow).join('')}</div></section></div>
+        </div>
+      </section>
+    </section>`;}
+
+  function filteredKnowledgeItems(){
+    const query=knowledgeState.query.trim().toLowerCase();
+    let items=formalKnowledgeItems().filter(item=>(knowledgeState.domain==='全部知识'||item.domain===knowledgeState.domain)
+      &&(knowledgeState.field==='全部'||item.field===knowledgeState.field)
+      &&(knowledgeState.modality==='全部'||item.modality===knowledgeState.modality)
+      &&(knowledgeState.category==='全部'||item.domain===knowledgeState.category)
+      &&(knowledgeState.topic==='全部'||item.topics.includes(knowledgeState.topic)));
+    if(!query)return items;
+    return items.filter(item=>[item.title,item.summary,item.body,item.category,item.field,item.modality,item.source,...item.topics,...item.tags,...item.aliases].join(' ').toLowerCase().includes(query)||((query.includes('预付款')||query.includes('退定'))&&item.aliases.some(alias=>alias.includes('预付款'))));
+  }
+
+  function renderKnowledgeView(){
+    document.querySelectorAll('[data-hxx-knowledge-view]').forEach(node=>node.classList.toggle('on',node.dataset.hxxKnowledgeView===knowledgeState.view));
+    document.querySelectorAll('[data-hxx-knowledge-panel]').forEach(node=>{node.hidden=node.dataset.hxxKnowledgePanel!==knowledgeState.view;});
+    if(knowledgeState.view==='query')renderKnowledgeWorkspace();else renderKnowledgeManagement();
+  }
+
+  function renderKnowledgeManagement(){
+    const formalItems=formalKnowledgeItems().filter(item=>(knowledgeState.manageGroup==='全部正式知识'||item.domain===knowledgeState.manageGroup)&&(knowledgeState.manageType==='全部'||managementType(item)===knowledgeState.manageType));
+    document.querySelectorAll('[data-hxx-management-group]').forEach(node=>node.classList.toggle('on',node.dataset.hxxManagementGroup===knowledgeState.manageGroup));
+    document.querySelectorAll('[data-hxx-management-type]').forEach(node=>node.classList.toggle('on',node.dataset.hxxManagementType===knowledgeState.manageType));
+    const title=document.querySelector('#hxxManagementGroupTitle');if(title)title.textContent=knowledgeState.manageGroup;
+    const count=document.querySelector('#hxxManagedFormalCount');if(count)count.textContent=`共 ${formalItems.length} 条示例知识`;
+    const list=document.querySelector('#hxxManagedFormalList');if(list)list.innerHTML=formalItems.length?formalItems.map(managedFormalRow).join(''):'<div class="hxx-knowledge-empty"><b>当前分组暂无正式知识</b><span>可切换分组，或到“资料与待处理”完成候选审核。</span></div>';
+  }
+
+  function renderKnowledgeWorkspace(){
+    const workspace=document.querySelector('#hxxKnowledgeWorkspace');if(!workspace)return;
+    const items=filteredKnowledgeItems();
+    const activeFilters=HXX_KNOWLEDGE_FILTERS.filter(filter=>knowledgeState[filter.key]!=='全部');
+    workspace.dataset.mode=knowledgeState.query||activeFilters.length?'search':'overview';workspace.dataset.searchMode=knowledgeState.searchMode;
+    document.querySelectorAll('[data-hxx-search-mode]').forEach(node=>node.classList.toggle('on',node.dataset.hxxSearchMode===knowledgeState.searchMode));
+    document.querySelectorAll('[data-hxx-knowledge-domain]').forEach(node=>node.classList.toggle('on',node.dataset.hxxKnowledgeDomain===knowledgeState.domain));
+    document.querySelectorAll('[data-hxx-knowledge-filter]').forEach(node=>node.classList.toggle('on',knowledgeState[node.dataset.hxxKnowledgeFilter]===node.dataset.hxxFilterValue));
+    if(!items.some(item=>item.id===knowledgeState.selectedId))knowledgeState.selectedId=items[0]?.id||'';
+    const results=document.querySelector('#hxxKnowledgeResults');if(results)results.innerHTML=items.length?items.map(knowledgeResult).join(''):'<div class="hxx-knowledge-empty"><b>没有找到相关知识</b><span>可调整多模态筛选条件，或清空后重新搜索。</span></div>';
+    const count=document.querySelector('#hxxKnowledgeResultCount');if(count){count.dataset.count=String(items.length);count.textContent=`共 ${items.length} 条示例结果`;}
+    const title=document.querySelector('#hxxKnowledgeResultTitle');if(title)title.textContent=knowledgeState.query?`“${knowledgeState.query}”的检索结果`:activeFilters.length?activeFilters.map(filter=>knowledgeState[filter.key]).join(' · '):knowledgeState.domain==='全部知识'?'全部正式知识':knowledgeState.domain;
+    const preview=document.querySelector('#hxxKnowledgePreview');if(preview)preview.innerHTML=knowledgePreview(items.find(item=>item.id===knowledgeState.selectedId));
+    const summary=document.querySelector('#hxxKnowledgeSearchSummary');if(summary){const active=activeFilters.map(filter=>`${filter.label}：${knowledgeState[filter.key]}`).join(' · ');summary.hidden=!(knowledgeState.query||activeFilters.length);summary.innerHTML=knowledgeState.query?`<span>已使用<strong>${knowledgeState.searchMode==='semantic'?'语义检索':'关键词检索'}</strong>完成多路召回${active?` · ${active}`:''}</span><span>智能纠错：您是否想搜索“<strong>预付款退订</strong>”？</span>`:`<span>已启用多模态组合筛选</span><span>${active}</span>`;}
+  }
+
+  function sourcesPage(){const sources=[['council-wechat','市消保委微信公众号','公众号','每 6 小时','今天 10:24','WEB'],['national-law','国家法律法规数据库','网站','每日','今天 02:00','WEB'],['hangzhou-market','杭州市场监管发布','公众号','每日','今天 08:18','WEB'],['consult-log','杭小消咨询问答日志','内部数据','每日','今天 02:00','问答']];return `${lead('数据采集','统一管理网站、公众号与内部数据采集渠道',button('添加采集渠道','add-source')+button('同步已启用渠道','sync-sources','pri'))}
+    <section class="hxx-panel hxx-sources-panel"><div class="hxx-panel-head"><h3>采集渠道</h3><span class="spacer"></span><span id="hxxSourceStatus" role="status">4 个渠道运行中</span></div>
+    <div class="hxx-source-card hxx-source-head" aria-hidden="true"><span></span><span>渠道名称</span><span>渠道类型</span><span>采集频率</span><span>最近同步</span><span>运行状态</span><span>操作</span></div>
+    ${sources.map(source=>`<div class="hxx-source-card" data-hxx-source="${source[0]}" data-source-enabled="true"><span class="hxx-source-mark">${source[5]}</span><div><b>${source[1]}</b><small>增量采集 · 原始快照与历史记录保留</small></div><span>${source[2]}</span><span>${source[3]}</span><span>${source[4]}</span><span class="hxx-badge ok" data-hxx-source-status>运行中</span><div class="hxx-source-actions">${button('同步','sync-one','sm')}<button type="button" class="btn sm gho" data-hxx-action="toggle-source">停用</button></div></div>`).join('')}<div id="hxxSourceError" role="alert" hidden>同步失败，已保留任务，可重试。</div></section>`;}
+
+  function deriveReviewWorkStatus(item){const active=item.candidates.filter(candidate=>!['confirmed','rejected'].includes(candidate.state));if(active.some(candidate=>candidate.state==='conflict'))return ['有冲突','dng'];if(active.length)return ['待审核','warn'];return ['已通过','ok'];}
+
+  function filteredReviewWorkItems(){const query=reviewSearchQuery.trim().toLowerCase();return HXX_REVIEW_WORK_ITEMS.filter(item=>{const matchesQuery=!query||[item.name,item.source,item.domain,...item.candidates.flatMap(candidate=>[candidate.title,candidate.category,candidate.tags,candidate.locator])].join(' ').toLowerCase().includes(query),matchesCategory=!reviewCategoryFilters.size||item.candidates.some(candidate=>reviewCategoryFilters.has(candidate.category));return matchesQuery&&matchesCategory;});}
+
+  const escapeReviewText=value=>String(value).replace(/[&<>"']/g,character=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
+  const reviewSelectOptions=(options,current)=>[...new Set([current,...options])].map(option=>'<option value="'+escapeReviewText(option)+'"'+(option===current?' selected':'')+'>'+escapeReviewText(option)+'</option>').join('');
+
+  function reviewCandidateRow(item,candidate){
+    const finished=['confirmed','rejected'].includes(candidate.state),editing=editingReviewCandidates.has(candidate.id),rejecting=rejectingReviewCandidates.has(candidate.id);
+    const governance=editing?`<div class="hxx-review-candidate-editor" data-hxx-review-editor="${candidate.id}">
+      <label><span>分类</span><select class="inp" data-hxx-review-field="category">${reviewSelectOptions(HXX_REVIEW_CATEGORY_OPTIONS,candidate.category)}</select></label>
+      <label class="hxx-review-tag-editor" data-hxx-review-tag-editor><span>标签</span><div class="hxx-review-tag-list" data-hxx-review-tag-list>${candidate.tags.split(' · ').map(tag=>`<button type="button" data-hxx-action="remove-review-tag" data-hxx-review-tag="${escapeReviewText(tag)}"><span>${escapeReviewText(tag)}</span><i aria-hidden="true">×</i></button>`).join('')}</div><div class="hxx-review-tag-add"><input class="inp" data-hxx-review-tag-input placeholder="输入标签"><button type="button" class="btn sm" data-hxx-action="add-review-tag">添加</button></div></label>
+      <label><span>适用范围</span><select class="inp" data-hxx-review-field="scope">${reviewSelectOptions(HXX_REVIEW_SCOPE_OPTIONS,candidate.scope)}</select></label>
+    </div>`:`<div class="hxx-review-candidate-meta"><span><em>分类</em>${escapeReviewText(candidate.category)}</span><span><em>标签</em>${escapeReviewText(candidate.tags)}</span><span><em>适用范围</em>${escapeReviewText(candidate.scope)}</span></div>`;
+    const rejectForm=rejecting?`<label class="hxx-review-reject-form"><span>驳回原因 <em>必填，将写入操作记录</em></span><textarea class="inp" rows="2" data-hxx-reject-reason placeholder="请说明内容、分类、来源或适用性存在的问题"></textarea></label>`:'';
+    const actions=finished?badge(candidate.state==='confirmed'?'已通过':'已驳回',candidate.state==='confirmed'?'ok':''):rejecting?`<button type="button" class="btn sm gho" data-hxx-action="cancel-review-rejection" data-work-id="${item.id}" data-candidate-id="${candidate.id}">取消</button><button type="button" class="btn sm dng" data-hxx-action="confirm-review-rejection" data-work-id="${item.id}" data-candidate-id="${candidate.id}">确认驳回</button>`:editing?`<button type="button" class="btn sm gho" data-hxx-action="cancel-review-adjustment" data-work-id="${item.id}" data-candidate-id="${candidate.id}">取消</button><button type="button" class="btn sm pri" data-hxx-action="save-review-adjustment" data-work-id="${item.id}" data-candidate-id="${candidate.id}">保存调整</button>`:`<button type="button" class="btn sm gho" data-hxx-action="reject-review-candidate" data-work-id="${item.id}" data-candidate-id="${candidate.id}">驳回</button><button type="button" class="btn sm" data-hxx-action="adjust-review-candidate" data-work-id="${item.id}" data-candidate-id="${candidate.id}">调整</button><button type="button" class="btn sm pri" data-hxx-action="approve-review" data-work-id="${item.id}" data-candidate-id="${candidate.id}"${candidate.knowledgeId?` data-knowledge-id="${candidate.knowledgeId}"`:''}>${candidate.action}</button>`;
+    const audit=candidate.rejectReason?`<small class="hxx-review-reject-audit">驳回原因：${escapeReviewText(candidate.rejectReason)}</small>`:'';
+    return `<article class="hxx-review-candidate${editing||rejecting?' is-editing':''}" data-hxx-review-candidate="${candidate.id}"><div class="hxx-review-candidate-copy"><div class="hxx-review-candidate-title"><b>${escapeReviewText(candidate.title)}</b>${candidate.state==='conflict'?badge('版本冲突','dng'):''}</div><p>${escapeReviewText(candidate.value)}</p>${governance}${rejectForm}<small>来源定位：${escapeReviewText(candidate.locator)}</small>${audit}</div><div class="hxx-review-candidate-actions"><button type="button" class="btn sm gho" data-hxx-action="view-review-source" data-work-id="${item.id}" data-candidate-id="${candidate.id}">查看原文</button>${actions}</div></article>`;
+  }
+
+  function reviewWorkItem(item){const [status,tone]=deriveReviewWorkStatus(item),expanded=expandedReviewWorkItems.has(item.id),active=item.candidates.filter(candidate=>!['confirmed','rejected'].includes(candidate.state)).length;return `<section class="hxx-review-work-item" data-hxx-review-work="${item.id}" data-review-task-type="knowledge" data-review-status="${status}"><div class="hxx-review-work-summary"><div class="hxx-review-work-source"><span class="hxx-review-work-mark">${item.mark}</span><div><b>${item.name}</b><small>${item.source}</small></div></div>${badge('知识候选','info')}${badge(active?`${status} · ${active} 项`:status,tone)}<span class="hxx-review-domain">推荐：${item.domain}</span><button type="button" class="btn sm" data-hxx-action="toggle-review-work" data-work-id="${item.id}">${expanded?'收起':'处理'}</button></div><div class="hxx-review-work-detail" ${expanded?'':'hidden'}>${item.candidates.map(candidate=>reviewCandidateRow(item,candidate)).join('')}</div></section>`;}
+
+  function updateReviewFilterSummary(){const trigger=document.querySelector('[data-hxx-review-category-trigger] b'),summary=document.querySelector('#hxxReviewFilterSummary'),footer=summary?.closest('.hxx-review-filter-foot');if(trigger)trigger.textContent=reviewCategoryFilters.size?`已选 ${reviewCategoryFilters.size} 项`:'全部分类';if(summary){const labels={all:'全部任务',knowledge:'知识候选',optimization:'优化建议'},parts=[];if(reviewTaskTypeFilter!=='all')parts.push(`任务类型：${labels[reviewTaskTypeFilter]}`);if(reviewSearchQuery)parts.push(`模糊搜索“${reviewSearchQuery}”`);if(reviewCategoryFilters.size)parts.push(`已选 ${reviewCategoryFilters.size} 个分类`);summary.textContent=parts.join(' · ');if(footer)footer.hidden=!parts.length;}}
+
+  function renderReviewWorkQueue(){const host=document.querySelector('#hxxReviewWorkQueue'),knowledgeItems=filteredReviewWorkItems(),knowledgePending=knowledgeItems.reduce((count,item)=>count+item.candidates.filter(candidate=>!['confirmed','rejected'].includes(candidate.state)).length,0),optimizationPending=filteredOptimizationSuggestions().length,summary=document.querySelector('#hxxReviewPendingCount');if(host)host.innerHTML=unifiedReviewRows();if(summary){const visible=(reviewTaskTypeFilter==='optimization'?0:knowledgePending)+(reviewTaskTypeFilter==='knowledge'?0:optimizationPending);summary.textContent=`显示 ${visible} 项待处理`;}updateReviewFilterSummary();}
+
+  function reviewOriginBanner(){return reviewOrigin?`<div class="hxx-review-origin" role="status"><div><b>来自维护中心</b><span>${reviewOrigin}</span></div><button type="button" class="text-button" data-hxx-action="clear-review-origin">清除条件</button></div>`:'';}
+
+  function filteredOptimizationSuggestions(){const query=reviewSearchQuery.trim().toLowerCase();return HXX_EVOLUTION_CANDIDATES.filter(item=>item.status==='pending'&&(optimizationSuggestionFilter==='all'||item.maintenanceType===optimizationSuggestionFilter)&&(!query||[item.kind,item.title,item.reason,item.signal].join(' ').toLowerCase().includes(query)));}
+
+  function optimizationSuggestionRows(){const pending=filteredOptimizationSuggestions();return pending.map(item=>{const expansionKey=`optimization:${item.id}`,expanded=expandedReviewWorkItems.has(expansionKey);return `<section class="hxx-review-work-item hxx-review-optimization-item" data-hxx-review-optimization="${item.id}" data-review-task-type="optimization" data-review-status="待确认"><div class="hxx-review-work-summary"><div class="hxx-review-work-source"><span class="hxx-review-work-mark">AI</span><div><b>${escapeReviewText(item.title)}</b><small>${escapeReviewText(item.kind)} · ${escapeReviewText(item.signal)}</small></div></div>${badge('优化建议','info')}${badge('待确认','warn')}<span class="hxx-review-domain">学习价值：${item.score}</span><button type="button" class="btn sm" data-hxx-action="toggle-review-work" data-work-id="${expansionKey}">${expanded?'收起':'处理'}</button></div><div class="hxx-review-work-detail hxx-review-optimization-detail" ${expanded?'':'hidden'}><article class="hxx-review-candidate" data-hxx-evolution-candidate="${item.id}"><div class="hxx-review-candidate-copy"><div class="hxx-review-candidate-title"><b>${escapeReviewText(item.title)}</b></div><p>${escapeReviewText(item.reason)}</p><div class="hxx-review-candidate-meta"><span><em>建议类型</em>${escapeReviewText(item.kind)}</span><span><em>触发信号</em>${escapeReviewText(item.signal)}</span><span><em>学习价值</em>${item.score} / 100</span></div></div><div class="hxx-review-candidate-actions"><button type="button" class="btn sm gho" data-hxx-action="view-optimization-source" data-candidate-id="${item.id}">查看原文</button>${button('忽略','reject-evolution-candidate','sm')} ${button('采纳','confirm-evolution-candidate','sm pri')}</div></article></div></section>`;}).join('');}
+
+  function unifiedReviewRows(){const groups=[];if(reviewTaskTypeFilter!=='optimization')groups.push(...filteredReviewWorkItems().map(reviewWorkItem));if(reviewTaskTypeFilter!=='knowledge')groups.push(...optimizationSuggestionRows());return groups.join('')||`<div class="hxx-review-empty"><b>未找到匹配的审核任务</b><span>可调整任务类型、模糊关键词或分类条件后重试。</span><button type="button" class="btn sm" data-hxx-action="review-filter-reset">重置筛选</button></div>`;}
+
+  function reviewPage(){const knowledgePending=HXX_REVIEW_WORK_ITEMS.reduce((count,item)=>count+item.candidates.filter(candidate=>!['confirmed','rejected'].includes(candidate.state)).length,0),optimizationPending=HXX_EVOLUTION_CANDIDATES.filter(item=>item.status==='pending').length,total=knowledgePending+optimizationPending;return `${lead('知识审核','')}${reviewOriginBanner()}<section class="hxx-panel hxx-review-queue-panel"><div class="hxx-panel-head"><h3>审核任务</h3><span class="spacer"></span><span id="hxxReviewPendingCount" class="hxx-badge warn">${total} 项待处理</span></div><div class="hxx-review-filter-panel"><div class="hxx-review-filter-main"><label class="hxx-review-type-filter"><span>任务类型</span><select class="inp" data-hxx-review-type-filter><option value="all"${reviewTaskTypeFilter==='all'?' selected':''}>全部</option><option value="knowledge"${reviewTaskTypeFilter==='knowledge'?' selected':''}>知识候选</option><option value="optimization"${reviewTaskTypeFilter==='optimization'?' selected':''}>优化建议</option></select></label><div class="hxx-review-fuzzy-search"><label for="hxxReviewSearch">模糊搜索</label><input id="hxxReviewSearch" class="inp" data-hxx-review-search value="${escapeReviewText(reviewSearchQuery)}" placeholder="输入来源、标题、标签、信号或渠道关键词"></div><div class="hxx-review-category-select"><button type="button" class="hxx-review-category-trigger" data-hxx-action="toggle-review-category-menu" data-hxx-review-category-trigger aria-expanded="false"><span>分类</span><b>${reviewCategoryFilters.size?`已选 ${reviewCategoryFilters.size} 项`:'全部分类'}</b><i aria-hidden="true">⌄</i></button><div class="hxx-review-category-menu" data-hxx-review-category-menu hidden>${HXX_REVIEW_CATEGORY_OPTIONS.map(category=>`<label><input type="checkbox" data-hxx-review-category="${escapeReviewText(category)}" value="${escapeReviewText(category)}"${reviewCategoryFilters.has(category)?' checked':''}><span>${escapeReviewText(category)}</span></label>`).join('')}</div></div><button type="button" class="btn pri" data-hxx-action="review-search">搜索</button><button type="button" class="btn gho" data-hxx-action="review-filter-reset">重置</button></div><div class="hxx-review-filter-foot" hidden><span id="hxxReviewFilterSummary"></span></div></div><div id="hxxReviewWorkQueue" class="hxx-review-work-queue hxx-unified-review-list">${unifiedReviewRows()}</div><div class="hxx-learning-guard"><b>人工生效边界</b><span>知识候选通过后成为正式知识；优化建议采纳后只生成新版本候选，仍需再次审核。</span></div></section>`;}
+
+  function refreshReviewPage(){page('review',reviewPage());renderReviewWorkQueue();}
+
+  function graphPage(){return `${lead('知识图谱','基于已上传与采集内容生成实体关系候选',button('查看实体候选','graph-candidates')+button('重新抽取','graph-extract','pri'))}
+    <div class="hxx-kpis"><div class="hxx-kpi"><small>实体总数</small><b>8,642</b><span>本周 +96</span></div><div class="hxx-kpi"><small>关系总数</small><b>23,180</b><span>本周 +1,284</span></div><div class="hxx-kpi"><small>维权链路</small><b>326</b><span>场景 → 法规 → 步骤</span></div><div class="hxx-kpi"><small>实体链接准确率</small><b>99.6%</b><span>人工抽检校准</span></div></div>
+    <div class="hxx-graph-layout"><section class="hxx-panel hxx-graph"><svg viewBox="0 0 850 520" aria-label="放心消费知识图谱"><g>${[[425,250,180,120],[425,250,650,105],[425,250,680,350],[425,250,220,380],[425,250,210,185],[425,250,560,210],[560,210,650,105],[560,210,680,350],[210,185,180,120],[210,185,220,380]].map(x=>`<line x1="${x[0]}" y1="${x[1]}" x2="${x[2]}" y2="${x[3]}"></line>`).join('')}</g><g>
+    <circle data-hxx-graph="网络购物纠纷" cx="425" cy="250" r="42" fill="oklch(.54 .14 255)"></circle><text x="425" y="254" text-anchor="middle" fill="white">网络购物纠纷</text>
+    <circle data-hxx-graph="消保法第25条" cx="180" cy="120" r="31" fill="oklch(.7 .13 75)"></circle><text x="180" y="124" text-anchor="middle">消保法25条</text>
+    <circle data-hxx-graph="七日无理由" cx="650" cy="105" r="36" fill="oklch(.62 .12 160)"></circle><text x="650" y="109" text-anchor="middle">七日无理由</text>
+    <circle data-hxx-graph="典型案例" cx="680" cy="350" r="34" fill="oklch(.61 .16 28)"></circle><text x="680" y="354" text-anchor="middle">典型案例</text>
+    <circle data-hxx-graph="电商平台" cx="220" cy="380" r="31" fill="oklch(.62 .15 305)"></circle><text x="220" y="384" text-anchor="middle">电商平台</text>
+    <circle data-hxx-graph="留存证据" cx="210" cy="185" r="28" fill="oklch(.62 .12 160)"></circle><text x="210" y="189" text-anchor="middle">留存证据</text>
+    <circle data-hxx-graph="申请退货" cx="560" cy="210" r="29" fill="oklch(.62 .12 160)"></circle><text x="560" y="214" text-anchor="middle">申请退货</text></g></svg><div class="hxx-legend"><span><i style="background:oklch(.54 .14 255)"></i>消费场景</span><span><i style="background:oklch(.7 .13 75)"></i>法规条款</span><span><i style="background:oklch(.62 .12 160)"></i>维权步骤</span><span><i style="background:oklch(.61 .16 28)"></i>典型案例</span><span><i style="background:oklch(.62 .15 305)"></i>责任主体</span></div></section>
+    <aside class="hxx-panel"><div class="hxx-panel-head"><h3>节点关系详情</h3></div><div class="hxx-panel-body" id="hxxGraphDetail"><div class="hxx-callout"><b>状态</b><span>正式实体 · 由 18 条已审核知识共同支撑</span></div><div class="hxx-list" style="margin-top:12px"><div class="hxx-list-item"><div><b>候选实体</b><p>3 个待消歧与合并</p></div>${badge('待审核','warn')}</div><div class="hxx-list-item"><div><b>正式实体</b><p>可用于检索与关联推理</p></div>${badge('可用','ok')}</div><div class="hxx-list-item"><div><b>失效实体</b><p>保留历史关系，不参与新回答</p></div>${badge('可追溯')}</div><div class="hxx-list-item"><div><b>证据锚点</b><p>法规第25条 · 原文第3页</p></div>${badge('已定位','info')}</div></div></div></aside></div>`;}
+
+  function renderEvolutionCandidates(){renderReviewWorkQueue();}
+
+  function maintenanceCard(target,count,label,description){return `<button type="button" data-hxx-action="maintenance-filter" data-hxx-maintenance-target="${target}" aria-label="查看${label}待办"><b>${count}</b><span>${label}</span><small>${description}</small><i aria-hidden="true">→</i></button>`;}
+
+  function qualityPage(){const pendingItems=HXX_EVOLUTION_CANDIDATES.filter(item=>item.status==='pending'),pending=pendingItems.length,highest=pendingItems.sort((a,b)=>b.score-a.score)[0],qualityOrigin=qualityMaintenanceFocus==='scope-missing'?'维护范围缺失 · 配置未完整':'';return `${lead('进化治理','评估知识效果、发现治理问题并追踪闭环',badge('受控自我学习','info'))}
+    <div class="hxx-evolution-metrics"><section><span>知识可信度</span><b>92.4</b><small>来源、时效与适用范围综合评分</small><em>+2.1 近 30 日</em></section><section><span>内容质量与效果</span><b>87.6</b><small>回答解决率、反馈和引用评价</small><em>7 条低评待复盘</em></section><section><span>学习价值</span><b>84.1</b><small>未命中、人工修正与复用频次</small><em>${pending} 条候选待确认</em></section></div>
+    <section class="hxx-panel hxx-evolution-summary"><div><span class="hxx-evolution-eyebrow">优化建议待处理</span><b>${pending}</b><p>${highest?`当前高价值建议：${highest.title}`:'当前没有未处理的优化建议'}</p><small>来自未命中、低置信度、用户差评和人工修正</small></div>${button('去处理','route-review-optimization','pri')}<div class="hxx-learning-guard"><b>AI 自动进化边界</b><span>可自动优化检索排序、内容推荐与审核建议；不得自动修改正式知识、业务事实、承诺口径或合规规则。</span></div></section>
+    <section class="hxx-panel hxx-maintenance-center"><div class="hxx-panel-head"><h3>维护中心</h3><span class="spacer"></span>${badge('7 项待处理','warn')}</div><div class="hxx-maintenance-summary">${maintenanceCard('expiring','3','即将到期','含 1 项法规知识')}${maintenanceCard('version-conflict','2','版本冲突','等待人工确认')}${maintenanceCard('scope-missing','1','维护范围缺失','知识域责任未明确')}${maintenanceCard('knowledge-gap','1','知识缺口','来自高频未命中')}</div>${qualityOrigin?`<div class="hxx-review-origin hxx-quality-origin" role="status"><div><b>来自维护中心</b><span>${qualityOrigin}</span></div><button type="button" class="text-button" data-hxx-action="clear-maintenance-filter">清除条件</button></div>`:''}<div class="hxx-governance-grid"><div class="hxx-governance-block"><div class="hxx-governance-title"><h4>治理规则</h4><span>当前项目</span></div>${[['高风险知识到期预警','提前 30 天生成维护任务'],['正式知识冲突拦截','冲突版本不参与新回答'],['低置信度问题回收','连续出现后进入优化建议']].map(rule=>`<div class="hxx-governance-rule"><div><b>${rule[0]}</b><p>${rule[1]}</p></div><button type="button" class="hxx-rule-toggle is-on" data-hxx-evolution-rule="${rule[0]}" data-enabled="true" data-hxx-action="toggle-evolution-rule">已启用</button></div>`).join('')}</div><div id="hxxDomainMaintenance" class="hxx-governance-block${qualityMaintenanceFocus==='scope-missing'?' is-focus':''}"><div class="hxx-governance-title"><h4>知识域维护状态</h4><span>责任与健康度</span></div>${[['法律法规','知识管理员','96%','ok'],['咨询问答','消保业务组','91%','info'],['典型案例','案例审核组','82%','warn'],['宣传素材','内容运营组','88%','info']].map(domain=>`<div class="hxx-domain-health"><div><b>${domain[0]}</b><p>${domain[1]}</p></div><span class="hxx-health-track"><i style="width:${domain[2]}"></i></span>${badge(domain[2],domain[3])}</div>`).join('')}</div></div></section>`;}
+
+  function trendPage(){return `${lead('趋势内容','保留 AI 获客趋势能力，用于消费热点、政策动态和选题参考',button('刷新趋势','refresh-trend','pri'))}
+    <div class="hxx-callout" style="margin-bottom:14px"><b>使用规则</b><span>趋势内容可作为 AIGC 选题参考，但不会自动成为正式知识；引用事实时仍需关联正式知识来源。</span></div><div class="hxx-grid"><section class="hxx-panel"><div class="hxx-panel-head"><h3>消费热点 TOP</h3><span class="spacer"></span>${badge('近24小时')}</div><div class="hxx-table-wrap"><table class="hxx-table"><thead><tr><th>热点</th><th>来源</th><th>热度</th><th>知识覆盖</th><th>操作</th></tr></thead><tbody>${[['直播购物售后举证','公众号 / 咨询','98','76%'],['预付卡门店闭店退款','咨询 / 搜索','93','92%'],['网购商品拆封退货','咨询 / 媒体','87','88%'],['暑期培训机构退费','搜索 / 公众号','82','61%']].map(x=>`<tr><td><b>${x[0]}</b></td><td>${x[1]}</td><td>${x[2]}</td><td>${x[3]}</td><td>${button('用于创作','trend-to-aigc','sm')}</td></tr>`).join('')}</tbody></table></div></section><aside class="hxx-panel"><div class="hxx-panel-head"><h3>趋势去向</h3></div><div class="hxx-panel-body hxx-list"><div class="hxx-list-item"><div><b>AIGC 选题</b><p>可直接进入创作设置</p></div>${badge('允许','ok')}</div><div class="hxx-list-item"><div><b>知识补全建议</b><p>需人工审核后入库</p></div>${badge('候选','warn')}</div><div class="hxx-list-item"><div><b>正式知识</b><p>禁止自动发布</p></div>${badge('受控','dng')}</div></div></aside></div>`;}
+
+  function dashboardPage(){
+    const metrics=[['正式知识资产','8,642','条','沉淀六大知识域'],['累计内容采集','28,560','条','权威渠道持续汇聚'],['消费教育内容','1,286','篇','图文音视频协同生产'],['智能服务触达','126,840','人次','覆盖公众咨询与宣教'],['智能问答响应率','98.7','%','平均响应 1.26 秒']];
+    const resources=[['01','六大知识域','法规、问答、案例、提示、资讯与素材','6','个'],['02','权威来源渠道','官方网站、公众号及业务资料持续汇聚','20','个'],['03','多模态内容','文本、图片、音频与视频统一沉淀','4,216','条'],['04','今日新增知识','经审核发布后进入正式知识资产','96','条'],['05','本月知识更新','版本、时效与适用范围持续维护','482','条']];
+    const hotspots=[['预付式消费','96','+18.6%'],['网络购物','89','+12.4%'],['直播带货','82','+9.7%'],['老年消费','71','+7.2%'],['汽车消费','64','+5.8%']];
+    return `<div id="hxxLeadershipShowcase" class="hxx-showcase">
+      <header class="hxx-showcase-header">
+        <div class="hxx-showcase-identity"><span class="hxx-showcase-logo"><img src="assets/brand/consumer-council-logo.png" alt="消费者权益保护标识"></span><div><small>杭州市消费者权益保护委员会</small><h1>消费教育数字化运营大屏</h1><p>杭小消智慧消费服务</p></div></div>
+        <div class="hxx-showcase-header-center"><span></span><b>数字赋能消费教育 · 智慧守护放心消费</b><span></span></div>
+        <div class="hxx-showcase-clock"><div><strong id="hxxShowcaseTime">--:--:--</strong><span id="hxxShowcaseDate">----年--月--日</span></div><em><i></i>系统运行稳定</em><button type="button" data-hxx-action="exit-dashboard" aria-label="返回管理后台">返回管理后台</button></div>
+      </header>
+      <section class="hxx-showcase-metrics" aria-label="平台核心运营指标">${metrics.map((item,index)=>`<article data-hxx-showcase-metric><span>0${index+1}</span><div><small>${item[0]}</small><p><b>${item[1]}</b><em>${item[2]}</em></p><i>${item[3]}</i></div></article>`).join('')}</section>
+      <main class="hxx-showcase-main">
+        <section class="hxx-showcase-panel hxx-showcase-capabilities"><div class="hxx-showcase-panel-title"><span>KNOWLEDGE</span><h2>知识资源概览</h2></div><div class="hxx-showcase-capability-list">${resources.map(item=>`<article data-hxx-showcase-resource><span>${item[0]}</span><div><b>${item[1]}</b><p>${item[2]}</p></div><i><strong>${item[3]}</strong>${item[4]}</i></article>`).join('')}</div></section>
+        <section class="hxx-showcase-panel hxx-showcase-trend" data-hxx-showcase-trend><div class="hxx-showcase-panel-title"><span>GROWTH TREND</span><h2>知识与服务增长趋势</h2><div class="hxx-showcase-legend"><i></i>知识沉淀 <i></i>服务触达</div></div><div class="hxx-showcase-chart-wrap">
+          <svg viewBox="0 0 680 265" role="img" aria-label="近七个月知识沉淀与服务触达增长趋势"><defs><linearGradient id="hxxAreaKnowledge" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#18d5ff" stop-opacity=".38"/><stop offset="1" stop-color="#18d5ff" stop-opacity="0"/></linearGradient><linearGradient id="hxxAreaReach" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2ff0b5" stop-opacity=".2"/><stop offset="1" stop-color="#2ff0b5" stop-opacity="0"/></linearGradient></defs>
+            <g class="hxx-showcase-grid-lines"><path d="M48 32H650M48 82H650M48 132H650M48 182H650M48 232H650"/><path d="M48 24V232M148 24V232M248 24V232M348 24V232M448 24V232M548 24V232M650 24V232"/></g>
+            <path class="hxx-showcase-area knowledge" d="M48 196 C92 188 110 176 148 170 S212 154 248 145 S312 122 348 116 S410 94 448 87 S510 65 548 61 S614 38 650 34 L650 232 L48 232Z"/>
+            <path class="hxx-showcase-area reach" d="M48 212 C92 207 110 195 148 190 S212 176 248 168 S314 150 348 143 S410 129 448 119 S510 104 548 91 S614 72 650 66 L650 232 L48 232Z"/>
+            <path class="hxx-showcase-line knowledge" d="M48 196 C92 188 110 176 148 170 S212 154 248 145 S312 122 348 116 S410 94 448 87 S510 65 548 61 S614 38 650 34"/>
+            <path class="hxx-showcase-line reach" d="M48 212 C92 207 110 195 148 190 S212 176 248 168 S314 150 348 143 S410 129 448 119 S510 104 548 91 S614 72 650 66"/>
+            <g class="hxx-showcase-chart-dots">${[[48,196],[148,170],[248,145],[348,116],[448,87],[548,61],[650,34]].map(([x,y])=>`<circle class="knowledge" cx="${x}" cy="${y}" r="4"/>`).join('')}${[[48,212],[148,190],[248,168],[348,143],[448,119],[548,91],[650,66]].map(([x,y])=>`<circle class="reach" cx="${x}" cy="${y}" r="4"/>`).join('')}</g>
+            <g class="hxx-showcase-axis"><text x="48" y="255">2月</text><text x="148" y="255">3月</text><text x="248" y="255">4月</text><text x="348" y="255">5月</text><text x="448" y="255">6月</text><text x="548" y="255">7月</text><text x="650" y="255" text-anchor="end">8月</text></g>
+          </svg><div class="hxx-showcase-chart-highlight"><span>近 30 日服务增长</span><b>+23.8%</b><em>知识引用准确率 96.2%</em></div></div>
+          <div class="hxx-showcase-platform"><span>知识持续更新</span><i></i><b>实时<br>运营态势</b><i></i><span>多端服务在线</span></div>
+        </section>
+        <section class="hxx-showcase-panel hxx-showcase-hotspots"><div class="hxx-showcase-panel-title"><span>HOT TOPICS</span><h2>消费咨询热点</h2><em>近 30 日</em></div><div class="hxx-showcase-hotspot-list">${hotspots.map((item,index)=>`<article data-hxx-showcase-hotspot><strong>${index+1}</strong><div><b>${item[0]}</b><span><i style="width:${item[1]}%"></i></span></div><em>${item[2]}</em></article>`).join('')}</div><div class="hxx-showcase-hotspot-note"><span>热点内容用于趋势研判与消费提示</span><b>TOP 5 覆盖 68.4% 咨询</b></div></section>
+      </main>
+      <footer class="hxx-showcase-bottom">
+        <section class="hxx-showcase-panel hxx-showcase-structure"><div class="hxx-showcase-panel-title"><span>CONTENT</span><h2>消费教育内容结构</h2></div><div class="hxx-showcase-donut"><div><span>1,286</span><small>内容总量</small></div></div><ul><li><i></i><span>消费提示</span><b>34%</b></li><li><i></i><span>政策法规</span><b>26%</b></li><li><i></i><span>典型案例</span><b>22%</b></li><li><i></i><span>咨询问答</span><b>18%</b></li></ul></section>
+        <section class="hxx-showcase-panel hxx-showcase-coverage"><div class="hxx-showcase-panel-title"><span>SERVICE</span><h2>消费教育服务覆盖</h2></div><div class="hxx-showcase-channel-grid">${[['公众号','42,680','权威内容传播'],['微官网','31,260','公众便捷访问'],['智能问答','38,420','全天候咨询服务'],['数字人','14,480','视频化消费教育']].map(item=>`<article><span>${item[0]}</span><b>${item[1]}</b><small>${item[2]}</small></article>`).join('')}</div></section>
+        <section class="hxx-showcase-panel hxx-showcase-results"><div class="hxx-showcase-panel-title"><span>OPERATIONS</span><h2>平台运行监测</h2></div><div><article><b>99.98%</b><span>平台可用率</span></article><article><b>1.26s</b><span>平均响应时长</span></article><article><b>20</b><span>运行渠道</span></article></div><p class="hxx-showcase-health"><span><i></i>采集渠道正常</span><span><i></i>智能问答正常</span><span><i></i>内容发布正常</span><span><i></i>数字人服务正常</span></p></section>
+      </footer>
+      <div class="hxx-showcase-footnote">演示数据 · 数据更新至 2026 年 8 月</div>
+    </div>`;
+  }
+
+  function usagePage(){return `${lead('用量管理','平台手动增加额度，杭小消主账号管理子账号使用上限',button('查看额度调整记录','quota-history'))}<div class="hxx-kpis"><div class="hxx-kpi"><small>共享总额度</small><b>500,000</b><span>平台已配置</span></div><div class="hxx-kpi"><small>已用量</small><b>128,460</b><span>本月 32,180</span></div><div class="hxx-kpi"><small>剩余额度</small><b>371,540</b><span>预计可用 11 个月</span></div><div class="hxx-kpi"><small>活跃子账号</small><b>12</b><span>3 个设置用量上限</span></div></div><div class="hxx-grid"><section class="hxx-panel"><div class="hxx-panel-head"><h3>子账号消耗</h3><span class="spacer"></span>${badge('共享额度池','info')}</div><div class="hxx-table-wrap"><table class="hxx-table"><thead><tr><th>账号</th><th>本月用量</th><th>子账号用量上限</th><th>权限</th><th>操作</th></tr></thead><tbody><tr data-usage-member="operator"><td><b>魏鑫</b><small>知识管理员</small></td><td>12,480</td><td>50,000</td><td>可操作</td><td>${button('设置上限','set-cap','sm')}</td></tr><tr data-usage-member="readonly"><td><b>李敏</b><small>内容运营</small></td><td>9,240</td><td>—</td><td>只读统计</td><td><span class="hxx-badge">只读状态</span></td></tr></tbody></table></div></section><aside class="hxx-panel"><div class="hxx-panel-head"><h3>额度调整记录</h3></div><div class="hxx-panel-body hxx-list"><div class="hxx-list-item"><div><b>平台手动增加额度</b><p>+100,000 · 2026-08-20 · 操作人：平台运营</p></div>${badge('已生效','ok')}</div><div class="hxx-list-item"><div><b>初始项目额度</b><p>+400,000 · 2026-08-01 · 操作人：平台运营</p></div>${badge('已生效','ok')}</div><button class="btn" aria-disabled="true">额度由平台配置</button></div></aside></div>`;}
+
+  function filteredLogs(){return HXX_LOG_RECORDS.filter(item=>logTypeFilter==='all'||item.type===logTypeFilter);}
+  function logRows(){return filteredLogs().map((item,index)=>`<tr data-hxx-log-row="${item.type}"><td>${item.time}</td><td><b>${item.label}</b></td><td>${item.actor}</td><td>${item.action}</td><td>${item.object}</td><td>${badge(item.result,item.tone)}</td><td>${button('查看详情','view-log-detail','sm')}<span hidden data-hxx-log-index="${index}"></span></td></tr>`).join('');}
+  function renderLogRows(){const body=document.querySelector('#hxxLogRows'),count=document.querySelector('#hxxLogCount');if(body)body.innerHTML=logRows();if(count)count.textContent=`${filteredLogs().length} 条示例记录`;}
+  function logsPage(){return `${lead('日志与审计','操作、登录与安全、AI 调用、知识使用和导出行为统一留痕',button('导出统计报表','export-stats')+button('导出日志','export-logs','pri'))}
+    <div class="hxx-callout" style="margin-bottom:14px"><b>导出边界</b><span>支持日志和统计报表导出；<strong>不支持知识内容批量导出，也不导出知识正文或附件</strong>。</span></div>
+    <div class="hxx-kpis"><div class="hxx-kpi"><small>操作日志</small><b>18,642</b><span>完整率 100%</span></div><div class="hxx-kpi"><small>登录与安全日志</small><b>2,814</b><span>异常登录 0 次</span></div><div class="hxx-kpi"><small>AI 调用日志</small><b>12,480</b><span>今日 1,286</span></div><div class="hxx-kpi"><small>知识使用日志</small><b>8,206</b><span>命中率 92.4%</span></div></div>
+    <section class="hxx-panel"><div class="hxx-panel-head"><h3>审计记录</h3><span class="spacer"></span><select class="inp" data-hxx-log-filter aria-label="筛选日志类型" style="width:190px"><option value="all">全部日志</option><option value="operation">操作日志</option><option value="login">登录与安全日志</option><option value="ai">AI 调用日志</option><option value="knowledge">知识使用日志</option><option value="export">导出记录</option></select><span id="hxxLogCount" class="hxx-badge info">${filteredLogs().length} 条示例记录</span></div><div class="hxx-table-wrap"><table class="hxx-table"><thead><tr><th>时间</th><th>日志类型</th><th>操作人 / 渠道</th><th>动作</th><th>对象</th><th>结果</th><th>操作</th></tr></thead><tbody id="hxxLogRows">${logRows()}</tbody></table></div></section>`;}
+
+  const roleNames=()=>HXX_ROLE_MATRIX.map(row=>row[0]);
+  const roleSelection=selectedRoles=>`<div class="hxx-role-choice-grid">${roleNames().map(role=>`<label><input type="checkbox" data-hxx-member-role value="${escapeReviewText(role)}"${selectedRoles.includes(role)?' checked':''}><span>${role}</span></label>`).join('')}</div><p class="mini">可选择多个角色，最终功能、数据和按钮权限取并集。</p>`;
+  function memberRows(){return HXX_MEMBERS.map(member=>`<tr data-hxx-member="${member.id}"><td><b>${member.name}</b><small>${member.account}</small></td><td><div class="hxx-role-tags">${member.roles.map(role=>badge(role,'info')).join('')}</div><small>权限取 ${member.roles.length} 个角色并集</small></td><td>${member.scope}</td><td>${badge(member.status,member.status==='启用'?'ok':'')}</td><td>${member.lastLogin}</td><td>${button('分配角色','edit-member-role','sm')} ${button('重置密码','reset-member-password','sm')} ${button(member.status==='启用'?'停用':'启用','toggle-member-status','sm')}</td></tr>`).join('');}
+  function roleRows(){return roleNames().map(role=>{const grant=HXX_ROLE_GRANTS[role]||{modules:[],buttons:[],scope:'待配置'},meta=HXX_ROLE_META[role]||{creator:'魏鑫',createdAt:'刚刚'},members=HXX_MEMBERS.filter(member=>member.roles.includes(role)).length,moduleLabels=grant.modules.map(key=>HXX_PERMISSION_MODULES.find(item=>item.key===key)?.label).filter(Boolean),buttonCount=Object.values(grant.permissions||{}).reduce((sum,items)=>sum+items.length,0);return `<tr data-hxx-role="${escapeReviewText(role)}"><td><b>${role}</b><small>${grant.scope}</small></td><td>${moduleLabels.join(' · ')||'尚未配置'}<small>${buttonCount} 项按钮权限 · 关联 ${members} 人</small></td><td>${meta.creator}</td><td>${meta.createdAt}</td><td><div class="rowact"><button type="button" class="btn sm" data-hxx-action="edit-role" data-role-name="${escapeReviewText(role)}">编辑</button><button type="button" class="btn sm" data-hxx-action="copy-role" data-role-name="${escapeReviewText(role)}">复制</button><button type="button" class="btn sm" data-hxx-action="delete-role" data-role-name="${escapeReviewText(role)}">删除</button></div></td></tr>`;}).join('');}
+  function rolePermissionBuilder(grant={modules:[],permissions:{},scope:'公开数据'}){return `<div class="field"><label>数据权限</label><select class="inp" id="hxxRoleScope">${['全部数据','指定知识域','公开数据','仅本人创建'].map(scope=>`<option${scope===grant.scope?' selected':''}>${scope}</option>`).join('')}</select></div><div class="field"><label>功能与按钮权限</label><div class="hxx-role-permission-builder">${HXX_PERMISSION_MODULES.map(module=>{const selected=grant.modules.includes(module.key),selectedButtons=grant.permissions?.[module.key]||[];return `<section data-hxx-role-module-row="${module.key}"><label class="hxx-role-module-check"><input type="checkbox" data-hxx-role-module value="${module.key}"${selected?' checked':''}><b>${module.label}</b></label><div>${module.buttons.map(action=>`<label><input type="checkbox" data-hxx-role-button data-module="${module.key}" value="${action}"${selectedButtons.includes(action)?' checked':''}><span>${action}</span></label>`).join('')}</div></section>`;}).join('')}</div><p class="mini">勾选父级功能会联动全部子级按钮；子级部分选中时，父级显示半选状态。</p></div>`;}
+  function collectRoleGrant(){const modules=[...document.querySelectorAll('[data-hxx-role-module]:checked')].map(input=>input.value),permissions={};for(const module of modules)permissions[module]=[...document.querySelectorAll(`[data-hxx-role-button][data-module="${module}"]:checked`)].map(input=>input.value);return {modules,permissions,buttons:[...new Set(Object.values(permissions).flat())],scope:document.querySelector('#hxxRoleScope')?.value||'公开数据'};}
+  function syncRoleTreeState(root=document){const rows=root.matches?.('[data-hxx-role-module-row]')?[root]:[...root.querySelectorAll('[data-hxx-role-module-row]')];rows.forEach(row=>{const parent=row.querySelector('[data-hxx-role-module]'),children=[...row.querySelectorAll('[data-hxx-role-button]')],checked=children.filter(child=>child.checked).length;if(parent){parent.checked=checked===children.length&&checked>0;parent.indeterminate=checked>0&&checked<children.length;}});}
+  function membersPage(){return `${lead('成员管理','管理租户成员账号与生命周期，创建或编辑成员时分配角色',button('新增成员','add-member','pri'))}
+    <div class="hxx-callout" style="margin-bottom:14px"><b>成员生命周期</b><span>支持新增成员、分配角色、启用、停用和重置密码；角色权限统一在“权限管理”中配置。</span></div>
+    <section class="hxx-panel"><div class="hxx-panel-head"><h3>成员列表</h3><span class="spacer"></span>${badge(`${HXX_MEMBERS.filter(item=>item.status==='启用').length} 个启用账号`,'ok')}</div><div class="hxx-table-wrap"><table class="hxx-table"><thead><tr><th>成员</th><th>角色</th><th>数据范围</th><th>状态</th><th>最近登录</th><th>操作</th></tr></thead><tbody id="hxxMemberRows">${memberRows()}</tbody></table></div></section>`;}
+
+  function permissionsPage(){return `${lead('权限管理','统一管理角色，编辑角色时配置模块、数据和按钮权限',button('创建角色','create-role','pri'))}
+    <div class="hxx-callout" style="margin-bottom:14px"><b>SaaS RBAC</b><span>成员只分配角色，不单独覆盖账号权限；角色变更后对关联成员统一生效。</span></div>
+    <section class="hxx-panel"><div class="hxx-panel-head"><h3>角色列表</h3><span class="spacer"></span>${badge(`${roleNames().length} 个角色`,'info')}</div><div class="hxx-table-wrap"><table class="hxx-table"><thead><tr><th>角色</th><th>权限摘要</th><th>创建人</th><th>创建时间</th><th>操作</th></tr></thead><tbody id="hxxRoleRows">${roleRows()}</tbody></table></div></section>`;}
+
+  function visiblePrompts(){const enabled=new Set(HXX_ENABLED_CAPABILITIES.map(item=>item.key)),query=promptSearchQuery.trim().toLowerCase();return HXX_PROMPT_CATALOG.filter(item=>enabled.has(item.featureKey)&&item.visibleToCurrentAccount&&(promptFeatureFilter==='all'||item.featureKey===promptFeatureFilter)&&(!query||`${item.name} ${item.feature} ${item.scene} ${item.model}`.toLowerCase().includes(query)));}
+  function promptRows(){return visiblePrompts().map(item=>{const readOnly=item.scope.includes('只读');return `<tr data-hxx-prompt-row="${item.id}" data-feature="${item.featureKey}"><td><b>${item.name}</b><small>${item.scene}</small></td><td>${badge(item.feature,'info')}<small>${item.scope}</small></td><td><b>${item.model}</b><small>${item.parameters}</small></td><td>${item.version}</td><td>${badge(item.status,'ok')}</td><td>${button('测试 Prompt','test-prompt','sm')} ${button(readOnly?'查看配置':'编辑配置','edit-prompt-model','sm')} ${readOnly?'':`${button('发布版本','publish-prompt','sm pri')} ${button('回滚版本','rollback-prompt','sm')}`}<span hidden data-prompt-id="${item.id}"></span></td></tr>`;}).join('');}
+  function renderPromptRows(){const body=document.querySelector('#hxxPromptRows'),count=document.querySelector('#hxxPromptCount');if(body)body.innerHTML=promptRows();if(count)count.textContent=`显示 ${visiblePrompts().length} / ${HXX_PROMPT_CATALOG.filter(item=>item.visibleToCurrentAccount).length} 条 Prompt`;}
+  function promptsPage(){return `${lead('提示词管理','统一管理当前租户已开通功能实际使用的全部 Prompt，并在 Prompt 内关联模型',button('新建租户 Prompt','new-prompt','pri'))}
+    <div class="hxx-callout" style="margin-bottom:14px"><b>已开通功能关联</b><span>当前账号为系统管理员；仅展示租户已开通且本账号有权访问的功能 Prompt，未开通功能不展示。</span></div>
+    <section class="hxx-panel"><div class="hxx-panel-head"><h3>Prompt 资产目录</h3><span class="spacer"></span><select class="inp" data-hxx-prompt-filter aria-label="按开通功能筛选 Prompt" style="width:210px"><option value="all">全部已开通功能</option>${HXX_ENABLED_CAPABILITIES.map(item=>`<option value="${item.key}"${promptFeatureFilter===item.key?' selected':''}>${item.label}</option>`).join('')}</select><input class="inp" data-hxx-prompt-search value="${promptSearchQuery}" placeholder="搜索 Prompt、场景或模型" style="width:230px"><span id="hxxPromptCount" class="hxx-badge info">显示 ${visiblePrompts().length} / ${HXX_PROMPT_CATALOG.length} 条 Prompt</span></div><div class="hxx-table-wrap"><table class="hxx-table"><thead><tr><th>Prompt / 使用场景</th><th>关联功能</th><th>关联模型 / 参数</th><th>版本</th><th>状态</th><th>操作</th></tr></thead><tbody id="hxxPromptRows">${promptRows()}</tbody></table></div></section>`;}
+
+  function systemPage(){return `${lead('系统设置','维护当前租户的企业基础信息',button('保存设置','save-settings','pri'))}
+    <section class="hxx-panel"><div class="hxx-panel-head"><h3>企业信息</h3></div><div class="hxx-panel-body"><div class="split"><div class="field"><label>企业名称</label><input class="inp" data-hxx-setting="enterprise-name" value="杭州市消费者权益保护委员会"></div><div class="field"><label>企业简称</label><input class="inp" data-hxx-setting="enterprise-short-name" value="杭州市消保委"></div></div><div class="split"><div class="field"><label>统一社会信用代码</label><input class="inp" data-hxx-setting="credit-code" value="13330100MB0X00000X"></div><div class="field"><label>注册地址</label><input class="inp" data-hxx-setting="registered-address" value="浙江省杭州市"></div></div><div class="split"><div class="field"><label>联系人</label><input class="inp" data-hxx-setting="contact-name" value="魏老师"></div><div class="field"><label>联系手机</label><input class="inp" data-hxx-setting="contact-mobile" value="138****2026"></div></div></div></section>`;}
+
+  function mountPages(){
+    page('home',homePage());page('trend',trendPage());
+    page('knowledge',knowledgePage());page('sources',sourcesPage());page('review',reviewPage());page('graph',graphPage());page('quality',qualityPage());
+    page('dashboard',dashboardPage());page('usage',usagePage());page('logs',logsPage());page('members',membersPage());page('permissions',permissionsPage());page('prompts',promptsPage());page('system',systemPage());
+  }
+
+  function configureReusedAiCapabilities(){
+    const create=document.querySelector('.page[data-p="create"]');
+    if(create){
+      const title=create.querySelector(':scope>.lead .t'),subtitle=create.querySelector(':scope>.lead .s');
+      if(title)title.textContent='AIGC 创作';
+      if(subtitle)subtitle.textContent='复用 AI 获客原有任务列表、视频设置、知识依据、脚本/封面/分镜确认与生成流程';
+      const videoTitle=create.querySelector('#marketingVideoTitle');if(videoTitle)videoTitle.value='预付式消费付款前要确认什么？';
+      const refLink=create.querySelector('#refLink');if(refLink){refLink.value='';refLink.placeholder='粘贴消费热点或参考视频链接';}
+      const gateTitle=create.querySelector('#createKnowledgeGate h3');if(gateTitle)gateTitle.textContent='杭小消正式知识依据';
+      const gateHint=create.querySelector('#createKnowledgeHint');if(gateHint)gateHint.textContent='正在检查正式知识、适用范围与高风险内容…';
+      const knowledgeLabels=['知识范围 · 待确认','消费服务知识 · 可用','法规/时效 · 待审核'];
+      create.querySelectorAll('#createKnowledgeRefs .perm').forEach((item,index)=>{if(knowledgeLabels[index])item.textContent=knowledgeLabels[index];});
+      const examples=[['预付式消费付款前要确认什么？','公众号 · 热度 8.5×'],['直播购物如何留存维权证据','短视频 · 热度 5.2×'],['网购商品拆封后还能否七日无理由退货','公众号 · 热度 4.1×']];
+      create.querySelectorAll('#burstSelect option:not(:first-child)').forEach((option,index)=>{const example=examples[index];if(example){option.value=example[0];option.textContent=`${example[0]} · ${example[1]}`;}});
+      const taskTitles=['预付式消费付款前确认事项','直播购物证据留存','网购商品七日无理由退货','未成年人游戏充值退款','预付卡商家闭店维权','老年消费防诈提示','装修合同避坑指南'];
+      create.querySelectorAll('#marketingTaskBody tr').forEach((row,index)=>{const taskTitle=taskTitles[index];if(!taskTitle)return;const name=row.querySelector('td:first-child .tt'),owner=row.querySelector('td:first-child .tm');if(name)name.textContent=taskTitle;if(owner)owner.textContent=`${index<2?'今天':'本周'} · 杭小消运营`;row.dataset.name=taskTitle;});
+    }
+    const works=document.querySelector('.page[data-p="works"]');
+    if(works){const title=works.querySelector(':scope>.lead .t'),subtitle=works.querySelector(':scope>.lead .s');if(title)title.textContent='作品与素材';if(subtitle)subtitle.textContent='复用 AI 获客作品任务、生成进度、预览和归档能力';}
+    const avatar=document.querySelector('.page[data-p="avatar"]');
+    if(avatar){
+      const subtitle=avatar.querySelector(':scope>.lead .s');if(subtitle)subtitle.textContent='复用 AI 获客数字人能力，使用杭小消已授权形象、声音与正式知识';
+      const firstName=avatar.querySelector('#avatarList .dhcard .nm b');if(firstName)firstName.textContent='杭小消官方形象';
+      const voiceNames=avatar.querySelectorAll('#voiceList .tile b');if(voiceNames[1])voiceNames[1].textContent='杭小消官方声音';
+      const addButton=avatar.querySelector('[data-act="buy-avatar"]');if(addButton){addButton.textContent='申请增加形象';addButton.dataset.act='custom-avatar';}
+      const quotaHint=avatar.querySelector('#avQuota')?.parentElement?.querySelector('.mini');if(quotaHint)quotaHint.textContent='形象额度由平台统一配置';
+      const boundary=avatar.querySelector(':scope>.note span');if(boundary)boundary.innerHTML='数字人直接复用 AI 获客平台能力；仅可使用<b>已授权的形象与声音</b>，生成内容自动保留 AI 标识、知识来源与审核状态。';
+    }
+  }
+
+  function mountShell(){
+    document.body.classList.add('hxx-admin');
+    document.title='消费教育数字化平台 · 杭小消后台原型';
+    const brand=document.querySelector('.brand');if(brand)brand.innerHTML='<div class="mk"><img src="assets/brand/consumer-council-logo.png" alt="315 消费者权益保护标识"></div><div><b>杭小消知识运营平台</b><small>杭州市消费者权益保护委员会</small></div>';
+    const navItem=item=>`${item.children?`<button type="button" class="hxx-nav-category" data-hxx-nav-category="${item.route}" aria-disabled="true" disabled>${icon(item.icon)}<span data-hxx-nav-label>${item.label}</span></button>`:`<button type="button" data-hxx-route="${item.route}" data-hxx-nav-parent="${item.route}">${icon(item.icon)}<span data-hxx-nav-label>${item.label}</span>${item.badge?`<span class="dot">${item.badge}</span>`:''}</button>`}${item.children?`<div class="nav-sub hxx-nav-sub open" data-hxx-nav-sub="${item.route}">${item.children.map(child=>child.subview?`<button type="button" data-hxx-content-subview="${child.subview}" data-hxx-parent-route="${item.route}">${child.label}</button>`:`<button type="button" data-hxx-route="${child.route}" data-hxx-parent-route="${item.route}">${child.label}</button>`).join('')}</div>`:''}`;
+    const navGroup=group=>group.navCategory?`<button type="button" class="hxx-nav-category" data-hxx-nav-category="${group.navCategory}" aria-disabled="true" disabled>${icon(group.icon)}<span data-hxx-nav-label>${group.group}</span></button><div class="nav-sub hxx-nav-sub open" data-hxx-nav-sub="${group.navCategory}">${group.items.map(item=>`<button type="button" data-hxx-route="${item.route}" data-hxx-parent-route="${group.navCategory}">${item.label}</button>`).join('')}</div>`:group.items.map(navItem).join('');
+    const nav=document.querySelector('#nav');if(nav)nav.innerHTML=HXX_NAV.map(group=>`<section class="nav-group" data-hxx-nav-group="${group.group}">${navGroup(group)}</section>`).join('');
+    const foot=document.querySelector('.rail .foot');if(foot)foot.innerHTML='<div class="av">杭</div><div>系统管理员</div><span style="margin-left:auto">RBAC</span>';
+    const usage=document.querySelector('.top .chip.usage');if(usage){usage.classList.add('prototype-flag');usage.innerHTML='剩余额度 <b>371,540</b>';usage.dataset.act='';}
+    const customer=document.querySelector('#customerSwitch');if(customer){customer.innerHTML='<span class="lg">杭</span><span id="customerName">杭小消专属租户</span>';customer.dataset.act='';}
+    const top=document.querySelector('.top');if(top&&!top.querySelector('.prototype-flag-note')){const flag=document.createElement('span');flag.className='chip prototype-flag prototype-flag-note';flag.textContent='产品原型 · 演示数据';top.insertBefore(flag,usage);}
+    if(top&&!top.querySelector('[data-hxx-action="open-notification-center"]')){const notice=document.createElement('button');notice.type='button';notice.className='chip hxx-notification-center';notice.dataset.hxxAction='open-notification-center';notice.innerHTML=`<span aria-hidden="true">◇</span><span>通知中心</span><b>${HXX_NOTIFICATIONS.filter(item=>item.unread).length}</b>`;top.insertBefore(notice,customer);}
+    const login=document.querySelector('#login');if(login){login.querySelector('.lbrand').innerHTML='<div class="mk">AI</div><div><b>AI 获客</b><small>企业智能增长 SaaS 平台</small></div>';login.querySelector('.lhero h1').innerHTML='一个账号，<br>进入专属业务空间';login.querySelector('.lhero p').textContent='统一登录 · 租户识别 · 功能开通 · 权限加载';login.querySelector('.lfeat').innerHTML='<li>✓ 登录后自动识别所属租户</li><li>✓ 按账号加载品牌、菜单、功能与数据</li><li>✓ 所有访问与操作均在租户权限范围内</li>';login.querySelector('.lfoot').textContent='© 2026 AI 获客 · SaaS 产品原型';}
+    document.querySelectorAll('[data-kbtab="evolution"],[data-kbpanel="evolution"],[data-kbpanel="governance"],[data-subview="setting-help"],[data-subview-panel="setting-help"],.page[data-p="agent-center"]').forEach(node=>node.remove());
+  }
+
+  function syncHxxNavigation(route,subview=''){
+    const parentRoute=CONTENT_ROUTE_PARENTS[route]||route;
+    document.querySelectorAll('[data-hxx-nav-parent]').forEach(item=>item.classList.toggle('on',item.dataset.hxxNavParent===parentRoute));
+    document.querySelectorAll('.nav-sub [data-hxx-route]').forEach(item=>item.classList.toggle('on',item.dataset.hxxRoute===route));
+    document.querySelectorAll('[data-hxx-content-subview]').forEach(item=>item.classList.toggle('on',route==='marketing-materials'&&item.dataset.hxxContentSubview===subview));
+    document.querySelectorAll('[data-hxx-nav-sub]').forEach(item=>item.classList.add('open'));
+  }
+
+  function updateShowcaseClock(){
+    const now=new Date(),date=document.querySelector('#hxxShowcaseDate'),time=document.querySelector('#hxxShowcaseTime');
+    if(date)date.textContent=new Intl.DateTimeFormat('zh-CN',{year:'numeric',month:'2-digit',day:'2-digit',weekday:'short'}).format(now);
+    if(time)time.textContent=new Intl.DateTimeFormat('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(now);
+  }
+
+  function setDashboardMode(enabled){
+    document.body.classList.toggle('hxx-dashboard-mode',enabled);
+    if(enabled){
+      updateShowcaseClock();
+      if(!showcaseClockTimer)showcaseClockTimer=window.setInterval(updateShowcaseClock,1000);
+    }else if(showcaseClockTimer){
+      window.clearInterval(showcaseClockTimer);
+      showcaseClockTimer=0;
+    }
+  }
+
+  function navigate(route,options={}){
+    const pageRoute=REUSED_AI_ROUTES[route]||route;
+    const target=document.querySelector(`.page[data-p="${pageRoute}"]`);if(!target)return;
+    if(REUSED_AI_ROUTES[route]&&typeof window.go==='function')window.go(pageRoute);
+    else document.querySelectorAll('.page').forEach(item=>item.classList.toggle('show',item===target));
+    let subview='';
+    if(route==='marketing-materials'){
+      if(MATERIAL_SUBVIEWS.has(options.subview))activeContentSubview=options.subview;
+      subview=activeContentSubview;
+      if(typeof window.switchSubview==='function')window.switchSubview(subview);
+    }
+    setDashboardMode(route==='dashboard');
+    syncHxxNavigation(route,subview);
+    const meta=routeMeta[route]||routeMeta.home;const title=document.querySelector('#ptitle'),crumb=document.querySelector('#pcrumb');if(title)title.textContent=meta[0];if(crumb)crumb.textContent=meta[1];
+    document.querySelector('.rail')?.classList.remove('open');document.querySelector('.navmask')?.classList.remove('show');window.scrollTo(0,0);
+    const query=new URLSearchParams({review:route});if(subview)query.set('subview',subview);history.replaceState(null,'',`${location.pathname}?${query}`);
+    window.dispatchEvent(new CustomEvent('hxx:routechange',{detail:{route,subview}}));
+  }
+
+  function hxxToast(message,type='ok'){if(typeof window.toast==='function')window.toast(message,type);else console.info(message);}
+  function hxxModal(title,body,confirmLabel,onConfirm){if(typeof window.modal==='function')window.modal(title,body,confirmLabel,onConfirm,true);else hxxToast(title);}
+  function knowledgeForAction(button){const id=button?.dataset.knowledgeId||button?.closest('[data-hxx-managed-formal]')?.dataset.hxxManagedFormal||knowledgeState.selectedId;return HXX_KNOWLEDGE_ITEMS.find(item=>item.id===id)||formalKnowledgeItems()[0];}
+  function openReviewFromIntake(origin,query){reviewTaskTypeFilter='knowledge';reviewOrigin=origin;reviewSearchQuery=query;reviewCategoryFilters.clear();expandedReviewWorkItems.add('review-medical');refreshReviewPage();navigate('review');hxxToast('候选已进入知识审核，人工确认后才会成为正式知识');}
+  function entityCandidateBody(){return `<div class="hxx-callout"><b>实体建设边界</b><span>AI 只生成候选实体、关系与证据锚点；通过、合并或驳回均需人工确认。</span></div><div class="hxx-list" style="margin-top:12px"><section class="hxx-list-item" data-hxx-entity-candidate="platform"><div><b>网络交易平台 ↔ 电商平台</b><p>候选关系：同义实体 · 置信度 92% · 来源 4 条正式知识</p><small>证据锚点：咨询问答批次 #0825 · 26 次共现</small></div><div class="rowact"><button type="button" class="btn sm" data-hxx-action="merge-entity">合并</button><button type="button" class="btn sm pri" data-hxx-action="approve-entity">通过</button><button type="button" class="btn sm gho" data-hxx-action="reject-entity">驳回</button></div></section><section class="hxx-list-item" data-hxx-entity-candidate="refund"><div><b>申请退货 → 七日无理由</b><p>候选关系：适用规则 · 置信度 87% · 来源 7 条正式知识</p><small>证据锚点：《消费者权益保护法》第25条</small></div><div class="rowact"><button type="button" class="btn sm pri" data-hxx-action="approve-entity">通过</button><button type="button" class="btn sm gho" data-hxx-action="reject-entity">驳回</button></div></section></div>`;}
+  function updateNotificationBadge(){const count=document.querySelector('.hxx-notification-center b');if(count)count.textContent=String(HXX_NOTIFICATIONS.filter(item=>item.unread).length);}
+  function notificationCenterBody(){return `<div class="hxx-callout"><b>当前账号 · 系统管理员</b><span>消息根据当前账号与权限自动接收，通知规则由系统固定，无需单独配置。</span></div>${HXX_NOTIFICATIONS.map(item=>{const rule=HXX_NOTIFICATION_RULES[item.rule],expanded=activeNotificationId===item.id;return `<section class="drawer-section" data-hxx-notification="${item.id}"><div class="hxx-list-item"><div><b>${item.title}</b><p>${item.time} · ${rule.event}</p></div>${item.unread?'<span class="hxx-badge info">未读</span>':'<span class="hxx-badge">已读</span>'}</div><p class="mini" style="margin:10px 0">${item.summary}</p>${expanded?`<div class="hxx-callout"><b>推送规则</b><span>触发：${rule.event}<br>接收：${rule.receiver}</span></div>`:''}<div class="rowact" style="margin-top:10px"><button type="button" class="btn sm" data-hxx-action="view-notification" data-notification-id="${item.id}">${expanded?'收起详情':'查看详情'}</button><button type="button" class="btn sm pri" data-hxx-action="handle-notification" data-notification-id="${item.id}">去处理</button></div></section>`;}).join('')}`;}
+  function renderNotificationCenter(){const body=document.querySelector('#drawerBody');if(body)body.innerHTML=notificationCenterBody();}
+  function openNotificationCenter(trigger){const drawer=document.querySelector('#detailDrawer'),mask=document.querySelector('#drawerMask'),mini=drawer?.querySelector('.drawer-head .mini'),title=document.querySelector('#drawerTitle'),body=document.querySelector('#drawerBody'),foot=document.querySelector('#drawerFoot');if(!drawer||!mask||!title||!body||!foot)return;drawerTrigger=trigger||document.querySelector('[data-hxx-action="open-notification-center"]')||document.activeElement;delete drawer.dataset.hxxDrawerKind;delete drawer.dataset.hxxPagePrdKey;if(mini)mini.textContent='当前账号消息';title.textContent='通知中心';body.innerHTML=notificationCenterBody();foot.innerHTML='<button type="button" class="btn" data-act="close-drawer">关闭</button><button type="button" class="btn" data-hxx-action="open-notification-prd">查看 PRD</button><button type="button" class="btn pri" data-hxx-action="mark-all-notifications">全部标为已读</button>';drawer.classList.add('show');mask.classList.add('show');drawer.setAttribute('aria-hidden','false');document.body.style.overflow='hidden';setTimeout(()=>drawer.querySelector('.btn')?.focus(),0);}
+  function action(name,button){
+    if(name==='view-operation-plan'){
+      operationPlanState.returnScrollY=window.scrollY;
+      operationPlanState.selectedPlanId=button.dataset.planId;
+      operationPlanState.selectedDraftTaskId='';
+      operationPlanState.errors=[];
+      operationPlanState.view='detail';
+      renderOperationPlan();window.scrollTo(0,0);return;
+    }
+    if(name==='back-operation-plan-list'||name==='plan-filter-reset'){
+      operationPlanState.view='list';operationPlanState.selectedPlanId='';operationPlanState.selectedDraftTaskId='';operationPlanState.errors=[];
+      if(name==='plan-filter-reset'){operationPlanState.type='all';operationPlanState.weekDate='';operationPlanState.month='';}
+      renderOperationPlan();if(name==='back-operation-plan-list')window.scrollTo(0,operationPlanState.returnScrollY);return;
+    }
+    if(name==='adjust-operation-task'){
+      const plan=selectedOperationPlan();
+      if(!plan||plan.status!=='待确认'){hxxToast('只有待确认计划可以调整拟任务','warn');return;}
+      operationPlanState.selectedDraftTaskId=button.dataset.draftTaskId;operationPlanState.errors=[];operationPlanState.view='task';renderOperationPlan();window.scrollTo(0,0);return;
+    }
+    if(name==='back-operation-plan-detail'||name==='cancel-operation-task'){
+      operationPlanState.view='detail';operationPlanState.errors=[];renderOperationPlan();return;
+    }
+    if(name==='save-operation-task'){
+      const plan=selectedOperationPlan(),task=selectedOperationDraftTask();if(!plan||!task)return;
+      const next={...task};document.querySelectorAll('[data-hxx-plan-task-field]').forEach(input=>{next[input.dataset.hxxPlanTaskField]=input.value.trim();});
+      const errors=validateOperationDraftTask(plan,next);operationPlanState.errors=errors;
+      if(errors.length){renderOperationPlan();document.querySelector('[data-hxx-plan-errors]')?.scrollIntoView({block:'center'});return;}
+      Object.assign(task,next);operationPlanState.view='detail';operationPlanState.errors=[];renderOperationPlan();hxxToast('拟任务调整已保存，尚未生成正式任务');return;
+    }
+    if(name==='regenerate-operation-plan'){
+      const plan=selectedOperationPlan();if(!plan||!['待确认','生成失败'].includes(plan.status)){hxxToast('当前计划不可重新生成','warn');return;}
+      hxxModal('重新生成运营计划',`<div class="hxx-callout"><b>读取最新企业情况</b><span>旧版本将归档并保留原始快照、替换原因和历史记录；新版本仍需人工确认。</span></div><div class="hxx-plan-modal-boundary">不会自动发布内容、发送消息或生成正式任务。</div>`,'确认重新生成',()=>{
+        const next=structuredClone(plan),nextVersion=plan.version+1;plan.status='已归档';plan.replacedReason='依据最新企业数据重新生成';
+        next.id=`${plan.id}-v${nextVersion}`;next.version=nextVersion;next.status='待确认';next.generatedAt='刚刚';next.formalTaskIds=[];next.confirmedBy='';next.confirmedAt='';next.progress=0;next.basis={...next.basis,judgement:`${next.basis.judgement}；依据最新企业数据重新生成`};
+        HXX_OPERATION_PLANS.unshift(next);operationPlanState.selectedPlanId=next.id;operationPlanState.errors=[];window.closeModal?.();renderOperationPlan();hxxToast('新版本已生成，旧版本已归档');
+      });return;
+    }
+    if(name==='confirm-operation-plan'){
+      const plan=selectedOperationPlan();if(!plan)return;
+      const confirmationKey=`${plan.id}:${plan.version}`; // plan_id + plan_version
+      if(operationPlanState.confirmationKeys.has(confirmationKey)||plan.confirmationKey===confirmationKey){hxxToast('该版本已确认，重复确认不重复生成任务');return;}
+      const errors=validateOperationPlan(plan);operationPlanState.errors=errors;
+      if(errors.length){renderOperationPlan();document.querySelector('[data-hxx-plan-errors]')?.scrollIntoView({block:'center'});return;}
+      const tasks=plan.draftTasks.filter(task=>!task.removed),highRisk=tasks.filter(task=>task.risk==='高风险').length;
+      hxxModal('确认并生成正式任务',`<div class="hxx-callout"><b>将批量创建全部正式任务</b><span>${tasks.length} 项拟任务 · ${highRisk} 项高风险；未调整的拟任务按当前内容接受。</span></div><div class="hxx-plan-modal-boundary"><b>执行边界</b><span>确认只生成内部正式任务，不自动对外发布、发送消息、报价或承诺结果。</span></div><p class="mini">提交键：plan_id + plan_version；重复提交返回原结果，不重复生成任务。</p>`,'确认并生成任务',()=>{
+        if(operationPlanState.confirmationKeys.has(confirmationKey)||plan.confirmationKey===confirmationKey){window.closeModal?.();hxxToast('该版本已确认，重复确认不重复生成任务');return;}
+        const formalTaskIds=tasks.map(task=>`formal-${plan.id}-${task.draftTaskId}`);
+        plan.formalTaskIds=formalTaskIds;plan.confirmationKey=confirmationKey;plan.status='执行中';plan.confirmedBy='魏鑫';plan.confirmedAt='刚刚';plan.progress=0;operationPlanState.confirmationKeys.add(confirmationKey);operationPlanState.errors=[];
+        window.closeModal?.();renderOperationPlan();hxxToast(`${formalTaskIds.length} 项正式任务已生成，高风险动作仍需单独人工审批`);
+      });return;
+    }
+    if(name==='open-notification-prd'){window.hxxOpenPagePrd?.('notifications',button,{returnAction:'return-notification-center',returnLabel:'返回通知中心'});return;}
+    if(name==='return-notification-center'){openNotificationCenter(document.querySelector('[data-hxx-action="open-notification-center"]'));return;}
+    if(name==='route-review-optimization'){reviewTaskTypeFilter='optimization';optimizationSuggestionFilter='all';reviewOrigin='';reviewSearchQuery='';reviewCategoryFilters.clear();refreshReviewPage();navigate('review');return;}
+    if(name.startsWith('route-'))return navigate(name.slice(6));
+    if(name==='upload-demo'){hxxModal('上传资料',`<div class="field"><label>选择资料</label><input class="inp" id="hxxUploadFile" type="file" accept=".pdf,.doc,.docx,.txt,image/*,video/*"></div><div class="split"><div class="field"><label>资料来源</label><select class="inp" id="hxxUploadSource"><option>消保委业务资料</option><option>权威网站下载</option><option>公众号内容</option></select></div><div class="field"><label>建议知识域</label><select class="inp" id="hxxUploadDomain"><option>AI 自动识别</option><option>法律法规</option><option>咨询问答</option><option>典型案例</option></select></div></div><div class="hxx-callout"><b>提交后进入知识审核</b><span>系统仅生成解析、分类和标签候选；未经人工审核不会进入正式知识。</span></div>`,'提交并生成候选',()=>{window.closeModal?.();openReviewFromIntake('上传资料 · 已生成知识候选','医美纠纷典型案例视频');});return;}
+    if(name==='add-source'){hxxModal('添加采集渠道',`<div class="field"><label>渠道名称</label><input class="inp" id="hxxSourceName" value="杭州消费政策发布"></div><div class="split"><div class="field"><label>渠道类型</label><select class="inp" id="hxxSourceType"><option>官方网站</option><option>微信公众号</option><option>内部数据</option></select></div><div class="field"><label>采集频率</label><select class="inp" id="hxxSourceFrequency"><option>每日</option><option>每 6 小时</option><option>手动同步</option></select></div></div><div class="field"><label>采集地址</label><input class="inp" id="hxxSourceUrl" value="https://example.gov.cn/consumer" aria-describedby="hxxSourceHint"><small id="hxxSourceHint">原型演示地址，不发起真实采集。</small></div><div class="hxx-callout"><b>新增后默认启用</b><span>采集结果只进入候选队列，仍需人工审核。</span></div>`,'添加渠道',()=>{window.closeModal?.();hxxToast('采集渠道已添加，首次同步后可查看知识候选');});return;}
+    if(name==='view-source-candidates'){openReviewFromIntake('本次采集批次 · 新增 2 条候选','采集渠道');return;}
+    if(name==='view-review-source'){const work=HXX_REVIEW_WORK_ITEMS.find(entry=>entry.id===button.dataset.workId),candidate=work?.candidates.find(entry=>entry.id===button.dataset.candidateId),knowledge=HXX_KNOWLEDGE_ITEMS.find(entry=>entry.id===candidate?.knowledgeId);if(!work||!candidate)return;hxxModal('原文预览 · 已定位',`<div class="hxx-callout" data-hxx-review-source-preview><b>${work.name}</b><span>${work.source}</span></div><div class="split"><div class="field"><label>原文定位</label><input class="inp" value="${candidate.locator}" disabled></div><div class="field"><label>任务类型</label><input class="inp" value="知识候选" disabled></div></div><div class="field"><label>原文片段</label><textarea class="inp" rows="7" disabled>${knowledge?.body||candidate.value}</textarea></div><div class="hxx-callout"><b>查看规则</b><span>网页来源正式上线后打开原始链接；上传文件在内置预览中定位页码、段落或时间码。当前为原型留存快照。</span></div>`,'关闭',()=>window.closeModal?.());return;}
+    if(name==='view-optimization-source'){const candidate=HXX_EVOLUTION_CANDIDATES.find(entry=>entry.id===button.dataset.candidateId),knowledge=formalKnowledgeItems()[0];if(!candidate)return;hxxModal('优化依据原文 · 已定位',`<div class="hxx-callout" data-hxx-review-source-preview><b>${knowledge?.title||candidate.title}</b><span>关联正式知识与触发信号</span></div><div class="split"><div class="field"><label>证据来源</label><input class="inp" value="${knowledge?.source||'知识使用与反馈日志'}" disabled></div><div class="field"><label>触发信号</label><input class="inp" value="${candidate.signal}" disabled></div></div><div class="field"><label>原文或证据片段</label><textarea class="inp" rows="7" disabled>${knowledge?.body||candidate.reason}</textarea></div><div class="hxx-callout"><b>采纳边界</b><span>采纳优化建议只生成新版本候选，仍需人工审核后才能替换当前正式版本。</span></div>`,'关闭',()=>window.closeModal?.());return;}
+    if(name==='query-source'){const item=knowledgeForAction(button);hxxModal('查看知识原件',`<div class="hxx-callout"><b>${item.source}</b><span>${item.title}</span></div><div class="field"><label>原文片段</label><textarea class="inp" rows="7" disabled>${item.summary}\n\n${item.body}</textarea></div><div class="split"><div class="field"><label>更新时间</label><input class="inp" value="${item.updated}" disabled></div><div class="field"><label>证据定位</label><input class="inp" value="原文条款 / 页面位置已保留" disabled></div></div>`,'关闭',()=>window.closeModal?.());return;}
+    if(name==='query-feedback'){const item=knowledgeForAction(button);hxxModal('反馈知识有误',`<div class="field"><label>反馈知识</label><input class="inp" value="${item.title}" disabled></div><div class="field"><label>问题类型</label><select class="inp" id="hxxFeedbackType"><option>内容不准确</option><option>信息已过期</option><option>适用范围不正确</option><option>原件或证据缺失</option></select></div><div class="field"><label>问题说明</label><textarea class="inp" id="hxxFeedbackDescription" rows="5" placeholder="请说明发现的问题和核验依据"></textarea></div><div class="hxx-callout"><b>反馈进入优化建议</b><span>反馈不会直接修改正式知识，仍需知识管理员复核。</span></div>`,'提交反馈',()=>{window.closeModal?.();reviewTaskTypeFilter='optimization';reviewOrigin='知识反馈 · 待复核';optimizationSuggestionFilter='all';reviewSearchQuery='';reviewCategoryFilters.clear();refreshReviewPage();navigate('review');hxxToast('反馈已提交并进入优化建议');});return;}
+    if(name==='managed-detail'){const item=knowledgeForAction(button);hxxModal('知识详情',`<div class="hxx-callout"><b>${item.title}</b><span>${item.status} · ${item.version} · ${item.updated}</span></div><div class="split"><div class="field"><label>知识域</label><input class="inp" value="${item.domain}" disabled></div><div class="field"><label>内容类型</label><input class="inp" value="${item.modality}" disabled></div></div><div class="field"><label>适用范围</label><input class="inp" value="${item.scope}" disabled></div><div class="field"><label>来源</label><input class="inp" value="${item.source}" disabled></div>`,'关闭',()=>window.closeModal?.());return;}
+    if(name==='managed-version'){const item=knowledgeForAction(button);hxxModal('知识版本记录',`<div class="hxx-callout"><b>${item.title}</b><span>已发布版本不可覆盖，修改后生成新版本。</span></div><div class="hxx-list"><div class="hxx-list-item"><div><b>${item.version} · 当前版本</b><p>${item.updated} · ${item.source}</p></div>${badge('已发布','ok')}</div><div class="hxx-list-item"><div><b>v1.0 · 历史版本</b><p>保留历史引用，不参与新的知识召回</p></div>${badge('可追溯')}</div></div>`,'关闭',()=>window.closeModal?.());return;}
+    if(name==='graph-candidates'){hxxModal('实体关系候选审核',entityCandidateBody(),'关闭',()=>window.closeModal?.());return;}
+    if(['approve-entity','merge-entity','reject-entity'].includes(name)){const row=button.closest('[data-hxx-entity-candidate]');if(!row)return;const labels={'approve-entity':['已通过','ok'],'merge-entity':['已合并','info'],'reject-entity':['已驳回','warn']},[label,tone]=labels[name];row.querySelector('.rowact').innerHTML=badge(label,tone);hxxToast(`实体候选${label}，正式上线后写入图谱审核记录`);return;}
+    if(name==='knowledge-search'){knowledgeState.query=document.querySelector('#hxxKnowledgeSearch')?.value.trim()||'';renderKnowledgeWorkspace();hxxToast(`已完成${knowledgeState.searchMode==='semantic'?'语义':'关键词'}检索与权限过滤`);return;}
+    if(name==='knowledge-clear'){Object.assign(knowledgeState,{query:'',domain:'全部知识',selectedId:'law-55',field:'全部',modality:'全部',category:'全部',topic:'全部'});const input=document.querySelector('#hxxKnowledgeSearch');if(input)input.value='';renderKnowledgeWorkspace();return;}
+    if(name==='sync-sources'||name==='sync-one'){const status=document.querySelector('#hxxSourceStatus'),row=button.closest('[data-hxx-source]');if(row?.dataset.sourceEnabled==='false')return;if(status)status.textContent=name==='sync-one'?'正在同步当前渠道…':'正在同步已启用渠道…';button.disabled=true;setTimeout(()=>{button.disabled=false;if(status)status.innerHTML='同步完成 · 新增 2 条候选 <button type="button" class="text-button" data-hxx-action="view-source-candidates">查看本次候选</button>';hxxToast('同步完成，候选内容等待人工审核');},700);return;}
+    if(name==='toggle-source'){const row=button.closest('[data-hxx-source]');if(!row)return;const enabled=row.dataset.sourceEnabled!=='true';row.dataset.sourceEnabled=String(enabled);row.classList.toggle('is-disabled',!enabled);const sourceStatus=row.querySelector('[data-hxx-source-status]'),sync=row.querySelector('[data-hxx-action="sync-one"]');if(sourceStatus){sourceStatus.textContent=enabled?'运行中':'已停用';sourceStatus.className=`hxx-badge ${enabled?'ok':''}`;}if(sync)sync.disabled=!enabled;button.textContent=enabled?'停用':'启用';const active=document.querySelectorAll('[data-hxx-source][data-source-enabled="true"]').length,status=document.querySelector('#hxxSourceStatus');if(status)status.textContent=`${active} 个渠道运行中`;hxxToast(enabled?'采集渠道已启用，将按原频率恢复采集':'采集渠道已停用，历史数据和任务记录已保留');return;}
+    if(name==='search-demo'){hxxToast('已完成权限、时效、适用范围和多路召回排序');return;}
+    if(name==='review-search'){reviewSearchQuery=document.querySelector('[data-hxx-review-search]')?.value.trim()||'';const menu=document.querySelector('[data-hxx-review-category-menu]'),trigger=document.querySelector('[data-hxx-review-category-trigger]');if(menu)menu.hidden=true;if(trigger)trigger.setAttribute('aria-expanded','false');renderReviewWorkQueue();return;}
+    if(name==='toggle-review-category-menu'){const menu=document.querySelector('[data-hxx-review-category-menu]'),open=menu?.hidden!==false;if(menu)menu.hidden=!open;button.setAttribute('aria-expanded',String(open));return;}
+    if(name==='review-filter-reset'){reviewTaskTypeFilter='all';optimizationSuggestionFilter='all';reviewSearchQuery='';reviewCategoryFilters.clear();const input=document.querySelector('[data-hxx-review-search]'),menu=document.querySelector('[data-hxx-review-category-menu]'),trigger=document.querySelector('[data-hxx-review-category-trigger]'),type=document.querySelector('[data-hxx-review-type-filter]');if(input)input.value='';if(type)type.value='all';document.querySelectorAll('[data-hxx-review-category]').forEach(category=>{category.checked=false;});if(menu)menu.hidden=true;if(trigger)trigger.setAttribute('aria-expanded','false');renderReviewWorkQueue();input?.focus();return;}
+    if(name==='clear-review-origin'){reviewOrigin='';reviewTaskTypeFilter='all';optimizationSuggestionFilter='all';reviewSearchQuery='';reviewCategoryFilters.clear();refreshReviewPage();return;}
+    if(name==='add-review-tag'){const editor=button.closest('[data-hxx-review-tag-editor]'),input=editor?.querySelector('[data-hxx-review-tag-input]'),list=editor?.querySelector('[data-hxx-review-tag-list]'),value=input?.value.trim();if(!value){input?.focus();hxxToast('请输入标签内容','warn');return;}if([...editor.querySelectorAll('[data-hxx-review-tag]')].some(tag=>tag.dataset.hxxReviewTag===value)){input.value='';input.focus();hxxToast('该标签已存在','warn');return;}const chip=document.createElement('button'),text=document.createElement('span'),remove=document.createElement('i');chip.type='button';chip.dataset.hxxAction='remove-review-tag';chip.dataset.hxxReviewTag=value;text.textContent=value;remove.textContent='×';remove.setAttribute('aria-hidden','true');chip.append(text,remove);list.appendChild(chip);input.value='';input.focus();return;}
+    if(name==='remove-review-tag'){const input=button.closest('[data-hxx-review-tag-editor]')?.querySelector('[data-hxx-review-tag-input]');button.remove();input?.focus();return;}
+    if(name==='toggle-review-work'){const id=button.dataset.workId;if(expandedReviewWorkItems.has(id))expandedReviewWorkItems.delete(id);else expandedReviewWorkItems.add(id);renderReviewWorkQueue();return;}
+    if(name==='reject-review-candidate'){const work=HXX_REVIEW_WORK_ITEMS.find(entry=>entry.id===button.dataset.workId),candidate=work?.candidates.find(entry=>entry.id===button.dataset.candidateId);if(candidate){editingReviewCandidates.delete(candidate.id);rejectingReviewCandidates.add(candidate.id);expandedReviewWorkItems.add(work.id);renderReviewWorkQueue();document.querySelector(`[data-hxx-review-candidate="${candidate.id}"] [data-hxx-reject-reason]`)?.focus();}return;}
+    if(name==='cancel-review-rejection'){rejectingReviewCandidates.delete(button.dataset.candidateId);renderReviewWorkQueue();hxxToast('已取消驳回，候选状态保持不变');return;}
+    if(name==='confirm-review-rejection'){const work=HXX_REVIEW_WORK_ITEMS.find(entry=>entry.id===button.dataset.workId),candidate=work?.candidates.find(entry=>entry.id===button.dataset.candidateId),input=button.closest('[data-hxx-review-candidate]')?.querySelector('[data-hxx-reject-reason]'),reason=input?.value.trim();if(!reason){input?.focus();hxxToast('请填写驳回原因','warn');return;}if(candidate){candidate.rejectReason=reason;candidate.state='rejected';rejectingReviewCandidates.delete(candidate.id);expandedReviewWorkItems.add(work.id);renderReviewWorkQueue();hxxToast('候选已驳回，原因已写入操作记录','warn');}return;}
+    if(name==='adjust-review-candidate'){const work=HXX_REVIEW_WORK_ITEMS.find(entry=>entry.id===button.dataset.workId),candidate=work?.candidates.find(entry=>entry.id===button.dataset.candidateId);if(candidate){rejectingReviewCandidates.delete(candidate.id);editingReviewCandidates.add(candidate.id);expandedReviewWorkItems.add(work.id);renderReviewWorkQueue();document.querySelector(`[data-hxx-review-editor="${candidate.id}"] [data-hxx-review-field="category"]`)?.focus();}return;}
+    if(name==='cancel-review-adjustment'){editingReviewCandidates.delete(button.dataset.candidateId);renderReviewWorkQueue();hxxToast('已取消调整，原候选内容保持不变');return;}
+    if(name==='save-review-adjustment'){const work=HXX_REVIEW_WORK_ITEMS.find(entry=>entry.id===button.dataset.workId),candidate=work?.candidates.find(entry=>entry.id===button.dataset.candidateId),editor=button.closest('[data-hxx-review-candidate]')?.querySelector('[data-hxx-review-editor]'),fields=['category','scope'],updates={};for(const field of fields){const input=editor?.querySelector(`[data-hxx-review-field="${field}"]`),value=input?.value.trim();if(!value){input?.focus();hxxToast('请选择分类和适用范围','warn');return;}updates[field]=value;}const tags=[...editor.querySelectorAll('[data-hxx-review-tag]')].map(tag=>tag.dataset.hxxReviewTag).filter(Boolean);if(!tags.length){editor.querySelector('[data-hxx-review-tag-input]')?.focus();hxxToast('请至少保留一个标签','warn');return;}updates.tags=tags.join(' · ');if(candidate){Object.assign(candidate,updates);const knowledge=HXX_KNOWLEDGE_ITEMS.find(entry=>entry.id===candidate.knowledgeId);if(knowledge){knowledge.category=candidate.category;knowledge.tags=tags;knowledge.scope=candidate.scope;}editingReviewCandidates.delete(candidate.id);expandedReviewWorkItems.add(work.id);renderReviewWorkQueue();hxxToast('候选调整已保存，审核状态保持不变');}return;}
+    if(name==='approve-review'){const work=HXX_REVIEW_WORK_ITEMS.find(entry=>entry.id===button.dataset.workId),candidate=work?.candidates.find(entry=>entry.id===button.dataset.candidateId),item=HXX_KNOWLEDGE_ITEMS.find(entry=>entry.id===button.dataset.knowledgeId);if(candidate){candidate.state='confirmed';expandedReviewWorkItems.add(work.id);renderReviewWorkQueue();}if(item){item.status='已发布';item.tone='ok';item.updated='2026-08-25 16:30';page('knowledge',knowledgePage());}hxxToast(item?'候选已审核并发布，正式知识已进入知识查询':'候选已通过，审核状态已更新');return;}
+    if(name==='confirm-evolution-candidate'||name==='reject-evolution-candidate'){const row=button.closest('[data-hxx-evolution-candidate]'),candidate=HXX_EVOLUTION_CANDIDATES.find(item=>item.id===row?.dataset.hxxEvolutionCandidate);if(candidate){if(name==='confirm-evolution-candidate'){candidate.status='confirmed';const workId=`optimization-version-${candidate.id}`;if(!HXX_REVIEW_WORK_ITEMS.some(item=>item.id===workId))HXX_REVIEW_WORK_ITEMS.unshift({id:workId,mark:'AI',name:`${candidate.title}（新版本候选）`,source:'优化建议 · 人工采纳 · 刚刚',domain:'知识治理',candidates:[{id:`candidate-${candidate.id}`,title:candidate.title,value:`已根据“${candidate.reason}”生成新版本候选，尚未替换正式知识。`,state:'pending',category:'咨询问答 / 网络消费 / 直播电商',tags:'优化建议 · 新版本候选',scope:'杭州地区 · 业务人员与公众',locator:`触发信号：${candidate.signal} · 关联正式知识证据`,action:'审核新版本'}]});expandedReviewWorkItems.add(workId);reviewTaskTypeFilter='knowledge';reviewOrigin='优化建议已采纳 · 新版本候选待审核';refreshReviewPage();hxxToast('优化建议已采纳并生成新版本候选，仍需人工审核','ok');}else{candidate.status='rejected';renderEvolutionCandidates();renderReviewWorkQueue();hxxToast('优化建议已忽略，处理结果已记录','warn');}}return;}
+    if(name==='maintenance-filter'){const target=button.dataset.hxxMaintenanceTarget;if(target==='expiring'){reviewTaskTypeFilter='knowledge';reviewOrigin='即将到期 · 待复核';reviewSearchQuery='医美纠纷典型案例视频';reviewCategoryFilters.clear();refreshReviewPage();navigate('review');return;}if(target==='version-conflict'){reviewTaskTypeFilter='knowledge';reviewOrigin='版本冲突 · 待审核/有冲突';reviewSearchQuery='预付式消费管理办法';reviewCategoryFilters.clear();refreshReviewPage();navigate('review');return;}if(target==='knowledge-gap'){reviewTaskTypeFilter='optimization';reviewOrigin='知识缺口 · 待处理';reviewSearchQuery='';reviewCategoryFilters.clear();optimizationSuggestionFilter='knowledge-gap';refreshReviewPage();navigate('review');return;}qualityMaintenanceFocus=target==='scope-missing'?'scope-missing':'';page('quality',qualityPage());navigate('quality');document.querySelector('#hxxDomainMaintenance')?.scrollIntoView({block:'center'});return;}
+    if(name==='clear-maintenance-filter'){qualityMaintenanceFocus='';page('quality',qualityPage());navigate('quality');return;}
+    if(name==='toggle-evolution-rule'){const enabled=button.dataset.enabled!=='true';button.dataset.enabled=String(enabled);button.classList.toggle('is-on',enabled);button.textContent=enabled?'已启用':'已暂停';hxxToast(`治理规则已${enabled?'启用':'暂停'}`);return;}
+    if(name==='trend-to-aigc'){navigate('create');hxxToast('趋势选题已带入创作设置');return;}
+    if(name==='exit-dashboard'){navigate('home');return;}
+    if(name==='fullscreen-dashboard'){document.documentElement.requestFullscreen?.();return;}
+    if(name==='add-member'){hxxModal('新增成员',`<div class="split"><div class="field"><label>成员姓名</label><input class="inp" id="hxxMemberName" placeholder="请输入姓名"></div><div class="field"><label>登录账号</label><input class="inp" id="hxxMemberAccount" placeholder="手机号或邮箱"></div></div><div class="field"><label>分配角色（可多选）</label>${roleSelection([])}</div><div class="field"><label>数据范围备注</label><select class="inp" id="hxxMemberScope"><option>公开知识 · 内容运营</option><option>指定知识域</option><option>公开知识 · 只读</option></select></div>`,'确认新增',()=>{const name=document.querySelector('#hxxMemberName')?.value.trim()||'新成员',account=document.querySelector('#hxxMemberAccount')?.value.trim()||`member${HXX_MEMBERS.length+1}@hangxiaoxiao.cn`,roles=[...document.querySelectorAll('[data-hxx-member-role]:checked')].map(input=>input.value),scope=document.querySelector('#hxxMemberScope')?.value||'公开知识 · 只读';if(!roles.length){hxxToast('请至少选择一个角色','warn');return;}HXX_MEMBERS.push({id:`member-${Date.now()}`,name,account,roles,scope,status:'启用',lastLogin:'尚未登录'});window.closeModal?.();page('members',membersPage());hxxToast(`成员“${name}”已新增，权限取 ${roles.length} 个角色并集`);});return;}
+    if(name==='create-role'){hxxModal('创建角色',`<div class="field"><label>角色名称</label><input class="inp" id="hxxRoleName" placeholder="例如：法规复核员"></div>${rolePermissionBuilder()}`,'创建角色',()=>{const role=document.querySelector('#hxxRoleName')?.value.trim(),grant=collectRoleGrant();if(!role){hxxToast('请输入角色名称','warn');return;}if(!grant.modules.length){hxxToast('请至少选择一个功能','warn');return;}if(HXX_ROLE_MATRIX.some(row=>row[0]===role)){hxxToast('该角色已存在','warn');return;}HXX_ROLE_MATRIX.push([role,1,0,0,0,0,0]);HXX_ROLE_GRANTS[role]=grant;HXX_ROLE_META[role]={creator:'魏鑫',createdAt:'刚刚',builtIn:false};window.closeModal?.();page('permissions',permissionsPage());hxxToast(`角色“${role}”已创建，已关联 ${grant.modules.length} 个功能和 ${grant.buttons.length} 项按钮权限`);});syncRoleTreeState(document.querySelector('#modal'));return;}
+    if(name==='edit-role'){const role=button.dataset.roleName,grant=HXX_ROLE_GRANTS[role];if(!grant)return;hxxModal(`编辑角色 · ${role}`,`<div class="field"><label>角色名称</label><input class="inp" value="${escapeReviewText(role)}" disabled></div>${rolePermissionBuilder(grant)}`,'保存权限集',()=>{const nextGrant=collectRoleGrant();if(!nextGrant.modules.length){hxxToast('请至少保留一个功能','warn');return;}HXX_ROLE_GRANTS[role]=nextGrant;window.closeModal?.();page('permissions',permissionsPage());hxxToast(`角色“${role}”的权限集已更新`);});syncRoleTreeState(document.querySelector('#modal'));return;}
+    if(name==='copy-role'){const source=button.dataset.roleName,grant=HXX_ROLE_GRANTS[source];if(!grant)return;let role=`${source}-副本`,index=2;while(HXX_ROLE_MATRIX.some(row=>row[0]===role))role=`${source}-副本${index++}`;HXX_ROLE_MATRIX.push([role,1,0,0,0,0,0]);HXX_ROLE_GRANTS[role]=structuredClone(grant);HXX_ROLE_META[role]={creator:'魏鑫',createdAt:'刚刚',builtIn:false};page('permissions',permissionsPage());hxxToast(`已复制角色“${source}”为“${role}”`);return;}
+    if(name==='delete-role'){const role=button.dataset.roleName,members=HXX_MEMBERS.filter(member=>member.roles.includes(role));if(members.length){hxxModal('无法删除角色',`<div class="hxx-callout"><b>已关联 ${members.length} 个成员</b><span>请先在成员管理中移除该角色，再进行删除。</span></div>`,'知道了',()=>window.closeModal?.());return;}hxxModal('删除角色',`<div class="hxx-callout"><b>${escapeReviewText(role)}</b><span>删除后该角色权限集将不再可用，该操作会记录到审计日志。</span></div>`,'确认删除',()=>{const index=HXX_ROLE_MATRIX.findIndex(row=>row[0]===role);if(index>=0)HXX_ROLE_MATRIX.splice(index,1);delete HXX_ROLE_GRANTS[role];delete HXX_ROLE_META[role];window.closeModal?.();page('permissions',permissionsPage());hxxToast(`角色“${role}”已删除`);});return;}
+    if(name==='toggle-member-status'){const row=button.closest('[data-hxx-member]'),member=HXX_MEMBERS.find(item=>item.id===row?.dataset.hxxMember);if(member){member.status=member.status==='启用'?'停用':'启用';page('members',membersPage());hxxToast(`${member.name}的账号已${member.status}`);}return;}
+    if(name==='reset-member-password'){const row=button.closest('[data-hxx-member]'),member=HXX_MEMBERS.find(item=>item.id===row?.dataset.hxxMember);hxxToast(`已向${member?.name||'该成员'}发送密码重置通知`);return;}
+    if(name==='edit-member-role'){const row=button.closest('[data-hxx-member]'),member=HXX_MEMBERS.find(item=>item.id===row?.dataset.hxxMember);if(!member)return;hxxModal(`分配角色 · ${member.name}`,`<div class="field"><label>角色（可多选）</label>${roleSelection(member.roles)}</div><div class="hxx-callout"><b>RBAC 并集规则</b><span>成员最终的功能、数据和按钮权限，取所有已分配角色权限的并集。</span></div>`,'保存分配',()=>{const roles=[...document.querySelectorAll('[data-hxx-member-role]:checked')].map(input=>input.value);if(!roles.length){hxxToast('请至少保留一个角色','warn');return;}member.roles=roles;window.closeModal?.();page('members',membersPage());hxxToast(`${member.name}已分配 ${roles.length} 个角色，权限按并集生效`);});return;}
+    if(name==='edit-prompt-model'){const row=button.closest('[data-hxx-prompt-row]'),prompt=HXX_PROMPT_CATALOG.find(item=>item.id===row?.dataset.hxxPromptRow);if(!prompt)return;const readOnly=prompt.scope.includes('只读'),promptContent=HXX_PROMPT_CONTENT[prompt.id]||'';hxxModal(`${readOnly?'查看':'编辑'} Prompt 配置`,`<div class="field"><label>Prompt</label><input class="inp" value="${prompt.name}" disabled></div><div class="split"><div class="field"><label>关联功能</label><input class="inp" value="${prompt.feature}" disabled></div><div class="field"><label>关联模型</label><select class="inp" id="hxxPromptModel"${readOnly?' disabled':''}><option${prompt.model==='DeepSeek-V3'?' selected':''}>DeepSeek-V3</option><option${prompt.model==='通义千问-Max'?' selected':''}>通义千问-Max</option></select></div></div><div class="field"><label>模型参数</label><input class="inp" id="hxxPromptParameters" value="${prompt.parameters}"${readOnly?' disabled':''}></div><div class="field"><label>完整 Prompt 内容</label><textarea class="inp" rows="10" data-hxx-prompt-content${readOnly?' disabled':''}>${escapeReviewText(promptContent)}</textarea></div><div class="hxx-callout"><b>${prompt.scope}</b><span>${readOnly?'平台基础 Prompt 对租户只读。':'修改后需测试并发布新版本才生效。'}</span></div>`,readOnly?'关闭':'保存草稿',()=>{if(!readOnly){prompt.model=document.querySelector('#hxxPromptModel')?.value||prompt.model;prompt.parameters=document.querySelector('#hxxPromptParameters')?.value||prompt.parameters;HXX_PROMPT_CONTENT[prompt.id]=document.querySelector('[data-hxx-prompt-content]')?.value||promptContent;}window.closeModal?.();page('prompts',promptsPage());hxxToast(readOnly?'已关闭只读配置':'Prompt 内容、模型与参数已保存为草稿');});return;}
+    if(name==='new-prompt'){hxxModal('新建租户 Prompt','<div class="field"><label>名称</label><input class="inp" placeholder="请输入 Prompt 名称"></div><div class="field"><label>关联已开通功能</label><select class="inp">'+HXX_ENABLED_CAPABILITIES.map(item=>`<option>${item.label}</option>`).join('')+'</select></div><div class="field"><label>关联模型</label><select class="inp"><option>DeepSeek-V3</option><option>通义千问-Max</option></select></div><div class="field"><label>完整 Prompt 内容</label><textarea class="inp" rows="10" data-hxx-prompt-content placeholder="请输入系统中实际使用的 Prompt"></textarea></div>','保存草稿',()=>{window.closeModal?.();hxxToast('租户 Prompt 草稿已创建');});return;}
+    if(name==='open-notification-center'){activeNotificationId='';openNotificationCenter(button);return;}
+    if(name==='view-notification'){const item=HXX_NOTIFICATIONS.find(entry=>entry.id===button.dataset.notificationId);if(item){item.unread=false;activeNotificationId=activeNotificationId===item.id?'':item.id;updateNotificationBadge();renderNotificationCenter();}return;}
+    if(name==='handle-notification'){const item=HXX_NOTIFICATIONS.find(entry=>entry.id===button.dataset.notificationId),rule=item&&HXX_NOTIFICATION_RULES[item.rule];if(item&&rule){item.unread=false;updateNotificationBadge();window.closeDrawer?.();navigate(rule.route);hxxToast(`已打开“${item.title}”的处理页面`);}return;}
+    if(name==='mark-all-notifications'){HXX_NOTIFICATIONS.forEach(item=>{item.unread=false;});activeNotificationId='';updateNotificationBadge();renderNotificationCenter();hxxToast('通知已全部标为已读');return;}
+    if(name==='view-log-detail'){const row=button.closest('[data-hxx-log-row]');hxxModal('日志详情',`<div class="hxx-callout"><b>${row?.querySelector('td:nth-child(2)')?.textContent||'审计记录'}</b><span>记录编号、租户、账号、动作、对象、时间与执行结果完整留痕。</span></div><div class="hxx-field" style="margin-top:12px"><span>记录内容</span><b>${row?.innerText.replace(/\s+/g,' · ')||''}</b></div>`,'关闭',()=>window.closeModal?.());return;}
+    if(name==='save-settings'){hxxToast('企业信息已保存');return;}
+    if(name.startsWith('export-')){hxxToast(name==='export-logs'?'已生成日志导出任务':'已生成统计报表导出任务');return;}
+    if(name==='graph-extract'){hxxToast('已生成 12 个候选实体与 26 条候选关系，等待人工审核');action('graph-candidates',button);return;}
+    hxxToast({'clone-template':'已复制模板，可修改封面、场景、文字与配音','weekly-report':'本周运营周报已生成','gap-candidate':'已生成知识补全候选，等待人工审核','test-prompt':'Prompt 测试完成：高置信度纠错通过','publish-prompt':'新版本已发布','rollback-prompt':'已回滚并生成新的版本记录','quota-history':'已展示完整额度调整记录','set-cap':'已打开子账号用量上限设置'}[name]||'操作已记录');
+  }
+
+  const HXX_OPERATION_PLANS=[{id:'plan-week-2026-w36',version:2,type:'week',status:'待确认',periodStart:'2026-08-31',periodEnd:'2026-09-06',title:'消费教育周运营计划',goal:'提升预付式消费风险提示覆盖',generatedAt:'2026-08-28 10:30',formalTaskIds:[],progress:0,basis:{enterpriseSummary:'预付式消费与网络消费咨询持续增长',businessGoal:'扩大高风险消费场景的公众教育覆盖',sources:['近 30 日咨询问答','公众号内容数据'],signals:['预付卡闭店咨询环比上升 18%'],knowledgeVersion:'正式知识快照 2026-08-28 · 1,286 条',judgement:'优先用短内容解释付款前确认',gaps:['预付卡异地门店退费案例样本不足'],confidence:86},strategy:{core:'围绕付款前确认、合同留存和纠纷举证形成连续内容',cadence:'周一准备、周三发布、周五复盘',channels:['公众号','视频号'],owner:'杭小消运营组',riskBoundary:'不自动发布，不承诺个案处理结果',expectedResult:'预期公众触达 12,000 次'},draftTasks:[{draftTaskId:'task-1',name:'预付式消费付款前确认清单',type:'公众号文章',planDate:'2026-09-02',channel:'公众号',capability:'公众号文章',owner:'李敏',risk:'中风险',expected:'预期阅读 3,000 次',basis:'近 30 日咨询环比上升 18%',removed:false},{draftTaskId:'task-2',name:'直播购物证据留存短视频',type:'营销视频',planDate:'2026-09-03',channel:'视频号',capability:'营销视频',owner:'魏鑫',risk:'高风险',expected:'预期触达 5,000 次',basis:'直播购物举证进入热点前五',removed:false}]},{id:'plan-month-2026-08',version:1,type:'month',status:'执行中',periodStart:'2026-08-01',periodEnd:'2026-08-31',title:'八月消费教育月计划',goal:'覆盖暑期网络消费重点风险',generatedAt:'2026-07-30 16:20',progress:50,formalTaskIds:['formal-month-1','formal-month-2'],draftTasks:[],basis:{enterpriseSummary:'暑期网络消费咨询上升',businessGoal:'提高公众风险识别',sources:['近 90 日咨询问答'],signals:['未成年人充值咨询增加'],knowledgeVersion:'正式知识快照 2026-07-30',judgement:'以专题内容持续覆盖',gaps:[],confidence:91},strategy:{core:'按主题周推进',cadence:'每周发布与复盘',channels:['公众号'],owner:'杭小消运营组',riskBoundary:'高风险内容人工审核',expectedResult:'预期触达 50,000 次'}},{id:'plan-week-2026-w35',version:1,type:'week',status:'已完成',periodStart:'2026-08-24',periodEnd:'2026-08-30',title:'网络购物维权周计划',goal:'强化七日无理由退货知识覆盖',generatedAt:'2026-08-21 09:40',progress:100,formalTaskIds:['formal-done-1'],draftTasks:[],basis:{enterpriseSummary:'退货咨询保持高位',businessGoal:'降低规则理解偏差',sources:['咨询问答日志'],signals:['拆封后退货咨询集中'],knowledgeVersion:'正式知识快照 2026-08-21',judgement:'集中解释适用条件与例外',gaps:[],confidence:93},strategy:{core:'问答与图文联动',cadence:'周内完成',channels:['公众号'],owner:'杭小消运营组',riskBoundary:'引用正式知识',expectedResult:'预期完成 3 项内容'}}];
+  /* operationPlanState: list/detail/task · 生成中 / 生成失败 / 待确认 / 执行中 / 已完成 / 已归档 · Asia/Shanghai · plan.version · confirmationKey = plan_id + plan_version · 重复确认不重复生成 · 拟任务 / 正式任务 */
+  const operationPlanState={view:'list',type:'all',weekDate:'',month:'',selectedPlanId:'',selectedDraftTaskId:'',returnScrollY:0,confirmationKeys:new Set()};
+  const dateInsidePeriod=(value,plan)=>Boolean(value)&&value>=plan.periodStart&&value<=plan.periodEnd;
+  function filteredOperationPlans(){return HXX_OPERATION_PLANS.filter(p=>(operationPlanState.type==='all'||p.type===operationPlanState.type)&&(!operationPlanState.weekDate||p.type!=='week'||dateInsidePeriod(operationPlanState.weekDate,p))&&(!operationPlanState.month||p.type!=='month'||p.periodStart.startsWith(operationPlanState.month)));}
+  const OPERATION_PLAN_TIME_ZONE='Asia/Shanghai';
+  HXX_OPERATION_PLANS[0].basis.sources.push('消费热点监测');
+  HXX_OPERATION_PLANS[0].basis.signals.push('直播购物举证问题进入热点前五');
+  HXX_OPERATION_PLANS[0].strategy.channels.push('运营大屏');
+  HXX_OPERATION_PLANS[0].strategy.expectedResult='预期公众触达 12,000 次，仅作计划目标';
+  HXX_OPERATION_PLANS[0].draftTasks.push({draftTaskId:'task-3',name:'本周高频咨询复盘',type:'运营复盘',planDate:'2026-09-04',channel:'内部',capability:'运营工作台',owner:'周审核',risk:'低风险',expected:'形成 1 份复盘结论',basis:'知识未命中与低置信度信号',removed:false});
+  Object.assign(HXX_OPERATION_PLANS[1],{confirmedBy:'魏鑫',confirmedAt:'2026-07-31 10:12'});
+  Object.assign(HXX_OPERATION_PLANS[2],{formalTaskIds:['formal-done-1','formal-done-2','formal-done-3'],confirmedBy:'魏鑫',confirmedAt:'2026-08-22 14:30'});
+  operationPlanState.errors=[];
+  const selectedOperationPlan=()=>HXX_OPERATION_PLANS.find(plan=>plan.id===operationPlanState.selectedPlanId);
+  const selectedOperationDraftTask=()=>selectedOperationPlan()?.draftTasks.find(task=>task.draftTaskId===operationPlanState.selectedDraftTaskId);
+  const operationPlanTasks=plan=>plan.draftTasks.filter(task=>!task.removed);
+  const operationPlanType=plan=>plan.type==='week'?'周计划':'月计划';
+  const operationPlanPeriod=plan=>`${plan.periodStart.replaceAll('-','.')}—${plan.periodEnd.replaceAll('-','.')}`;
+  const operationPlanTone=status=>status==='已完成'?'ok':status==='待确认'||status==='生成中'?'warn':status==='生成失败'?'dng':'info';
+  function validateOperationDraftTask(plan,task){const errors=[];if(!task.name||!task.type||!task.channel||!task.capability||!task.owner||!task.risk||!task.expected)errors.push({draftTaskId:task.draftTaskId,message:'请完整填写任务名称、类型、渠道、业务能力、负责人、风险和预期结果'});if(!dateInsidePeriod(task.planDate,plan))errors.push({draftTaskId:task.draftTaskId,message:'计划日期必须在当前计划周期内'});const member=HXX_MEMBERS.find(item=>item.name===task.owner);if(!member||member.status!=='启用')errors.push({draftTaskId:task.draftTaskId,message:'负责人已停用或不属于当前租户'});return errors;}
+  function validateOperationPlan(plan){const errors=[];if(plan.status!=='待确认')errors.push({message:'当前计划状态不可确认'});const tasks=operationPlanTasks(plan);if(!tasks.length)errors.push({message:'计划至少保留一项拟任务'});tasks.forEach(task=>errors.push(...validateOperationDraftTask(plan,task)));return errors;}
+  function operationPlanErrorSummary(){if(!operationPlanState.errors?.length)return '';return `<div class="hxx-plan-errors" data-hxx-plan-errors role="alert"><b>请先处理以下问题</b>${operationPlanState.errors.map(error=>`<span>${escapeReviewText(error.message)}</span>`).join('')}</div>`;}
+  function operationPlanSelect(name,label,options,current){return `<label><span>${label}</span><select class="inp" data-hxx-plan-task-field="${name}">${options.map(value=>`<option${value===current?' selected':''}>${escapeReviewText(value)}</option>`).join('')}</select></label>`;}
+  function operationPlanTaskView(plan,task){if(!task)return operationPlanDetailView(plan);const owners=HXX_MEMBERS.filter(member=>member.status==='启用').map(member=>member.name);return `<div class="hxx-plan-view" data-hxx-plan-view="task">${operationPlanErrorSummary()}<div class="hxx-plan-detail-head"><button class="btn sm gho" data-hxx-action="back-operation-plan-detail">← 返回计划详情</button><div><span>拟任务调整</span><h2>${escapeReviewText(task.name)}</h2><small>${operationPlanPeriod(plan)} · 保存后仍需确认整个计划</small></div></div><section class="hxx-plan-section hxx-plan-task-editor"><div class="hxx-plan-section-title"><div><span>任务配置</span><h3>只调整有问题的任务</h3></div>${badge('尚未生成正式任务','warn')}</div><div class="hxx-plan-task-form"><label class="wide"><span>任务名称</span><input class="inp" data-hxx-plan-task-field="name" value="${escapeReviewText(task.name)}"></label>${operationPlanSelect('type','任务类型',['公众号文章','营销视频','运营复盘'],task.type)}<label><span>计划日期</span><input class="inp" type="date" data-hxx-plan-task-field="planDate" value="${task.planDate}" min="${plan.periodStart}" max="${plan.periodEnd}"></label>${operationPlanSelect('channel','渠道',['公众号','视频号','运营大屏','内部'],task.channel)}${operationPlanSelect('capability','业务能力',['公众号文章','营销视频','运营工作台'],task.capability)}${operationPlanSelect('owner','负责人',owners,task.owner)}${operationPlanSelect('risk','风险等级',['低风险','中风险','高风险'],task.risk)}<label class="wide"><span>预期结果</span><input class="inp" data-hxx-plan-task-field="expected" value="${escapeReviewText(task.expected)}"></label></div><div class="hxx-plan-task-basis"><span>任务依据</span><b>${escapeReviewText(task.basis)}</b><small>依据来自计划生成快照，只读且可追溯。</small></div><div class="hxx-plan-editor-actions"><button class="btn" data-hxx-action="cancel-operation-task">取消</button><button class="btn pri" data-hxx-action="save-operation-task">保存调整</button></div></section></div>`;}
+  function operationPlanListRow(plan){const pending=plan.status==='待确认',taskCount=pending?`拟任务 ${operationPlanTasks(plan).length} 项`:`正式任务 ${plan.formalTaskIds.length} 项`,progress=plan.formalTaskIds.length?`${plan.progress}%`:'--';return `<tr data-hxx-operation-plan="${plan.id}"><td>${badge(operationPlanType(plan),plan.type==='week'?'info':'')}</td><td><b>${operationPlanPeriod(plan)}</b><small>${OPERATION_PLAN_TIME_ZONE}</small></td><td class="hxx-plan-title-cell"><b>${escapeReviewText(plan.title)}</b><small>${escapeReviewText(plan.goal)}</small></td><td>${plan.generatedAt}</td><td>${badge(plan.status,operationPlanTone(plan.status))}</td><td>${taskCount}</td><td><div class="hxx-plan-progress"><i><span style="width:${plan.formalTaskIds.length?plan.progress:0}%"></span></i><b>${progress}</b></div></td><td><button class="btn sm" data-hxx-action="view-operation-plan" data-plan-id="${plan.id}">查看计划</button></td></tr>`;}
+  function operationPlanListView(){const plans=filteredOperationPlans();return `<div class="hxx-plan-view" data-hxx-plan-view="list"><div class="lead hxx-plan-lead"><div><div class="t">运营计划</div><div class="s">企业 Agent 根据企业情况生成；解释依据和执行方式，人工确认后才生成正式任务</div></div><span class="hxx-badge info">企业情况驱动</span></div><section class="hxx-panel hxx-plan-list-panel"><div class="hxx-plan-toolbar"><label><span>计划类型</span><select class="inp" data-hxx-plan-filter="type"><option value="all"${operationPlanState.type==='all'?' selected':''}>全部计划</option><option value="week"${operationPlanState.type==='week'?' selected':''}>周计划</option><option value="month"${operationPlanState.type==='month'?' selected':''}>月计划</option></select></label><label data-hxx-plan-period-control="week"${operationPlanState.type==='week'?'':' hidden'}><span>周内任意日期</span><input class="inp" type="date" data-hxx-plan-filter="weekDate" value="${operationPlanState.weekDate}"></label><label data-hxx-plan-period-control="month"${operationPlanState.type==='month'?'':' hidden'}><span>月份</span><input class="inp" type="month" data-hxx-plan-filter="month" value="${operationPlanState.month}"></label><div class="hxx-plan-toolbar-result"><span>共 ${plans.length} 个计划</span><button class="btn sm gho" data-hxx-action="plan-filter-reset">重置</button></div></div><div class="hxx-table-wrap"><table class="hxx-plan-table"><thead><tr><th>计划类型</th><th>计划周期</th><th>计划名称 / 核心目标</th><th>生成时间</th><th>状态</th><th>任务数</th><th>执行进度</th><th>操作</th></tr></thead><tbody>${plans.length?plans.map(operationPlanListRow).join(''):`<tr><td colspan="8"><div class="hxx-plan-empty"><b>没有符合当前条件的运营计划</b><span>可调整计划类型或周期后重新查询。</span><button class="btn sm" data-hxx-action="plan-filter-reset">重置筛选</button></div></td></tr>`}</tbody></table></div></section></div>`;}
+  function operationPlanReason(plan){const basis=plan.basis;return `<div class="hxx-plan-reason-grid"><div><span>企业现状</span><b>${escapeReviewText(basis.enterpriseSummary)}</b></div><div><span>经营目标</span><b>${escapeReviewText(basis.businessGoal)}</b></div><div><span>数据来源</span><b>${basis.sources.map(escapeReviewText).join('、')}</b></div><div><span>变化信号</span><b>${basis.signals.map(escapeReviewText).join('；')}</b></div><div><span>正式知识版本</span><b>${escapeReviewText(basis.knowledgeVersion)}</b></div><div><span>AI 判断</span><b>${escapeReviewText(basis.judgement)}</b></div></div><div class="hxx-plan-evidence-foot"><div><span>信息缺口</span><b>${basis.gaps.length?basis.gaps.map(escapeReviewText).join('；'):'未发现影响本计划的核心缺口'}</b></div><div class="hxx-plan-confidence"><span>判断置信度</span><b>${basis.confidence}%</b><i><em style="width:${basis.confidence}%"></em></i></div></div>`;}
+  function operationPlanTaskRows(plan){if(!plan.draftTasks.length)return '<div class="hxx-plan-empty compact"><b>该历史版本已生成正式任务</b><span>拟任务草稿不再用于编辑。</span></div>';return plan.draftTasks.map(task=>`<article class="hxx-plan-task-row" data-hxx-draft-task-id="${task.draftTaskId}"><div class="hxx-plan-task-index">${task.draftTaskId.split('-').pop().padStart(2,'0')}</div><div><b>${escapeReviewText(task.name)}</b><span>${task.planDate} · ${escapeReviewText(task.channel)} · ${escapeReviewText(task.capability)}</span><small>依据：${escapeReviewText(task.basis)}</small></div><div class="hxx-plan-task-meta"><span>${escapeReviewText(task.owner)}</span>${badge(task.risk,task.risk==='高风险'?'dng':task.risk==='中风险'?'warn':'ok')}<b>${escapeReviewText(task.expected)}</b></div>${plan.status==='待确认'?`<button class="btn sm" data-hxx-action="adjust-operation-task" data-draft-task-id="${task.draftTaskId}">调整</button>`:''}</article>`).join('');}
+  function operationPlanFormalTasks(plan){return `<div class="hxx-plan-formal-tasks">${plan.formalTaskIds.map((id,index)=>`<div data-hxx-formal-task-id="${id}"><span>${String(index+1).padStart(2,'0')}</span><b>${escapeReviewText(plan.draftTasks[index]?.name||`正式任务 ${index+1}`)}</b><small>${escapeReviewText(id)}</small></div>`).join('')}</div>`;}
+  function operationPlanDetailView(plan){const pending=plan.status==='待确认';return `<div class="hxx-plan-view" data-hxx-plan-view="detail" data-hxx-plan-id="${plan.id}">${operationPlanErrorSummary()}<div class="hxx-plan-detail-head"><button class="btn sm gho" data-hxx-action="back-operation-plan-list">← 返回运营计划</button><div><span>${operationPlanType(plan)} · ${operationPlanPeriod(plan)}</span><h2>${escapeReviewText(plan.title)}</h2><small>版本 v${plan.version} · 生成于 ${plan.generatedAt}</small></div><div class="hxx-plan-detail-status">${badge(plan.status,operationPlanTone(plan.status))}${pending?'<button class="btn sm" data-hxx-action="regenerate-operation-plan">重新生成</button>':''}</div></div><section class="hxx-plan-section"><div class="hxx-plan-section-title"><div><span>01 · 生成依据快照</span><h3>为什么生成</h3></div>${badge(`置信度 ${plan.basis.confidence}%`,'info')}</div>${operationPlanReason(plan)}</section><section class="hxx-plan-section"><div class="hxx-plan-section-title"><div><span>02 · 执行方案</span><h3>计划怎么做</h3></div><span>${operationPlanTasks(plan).length||plan.formalTaskIds.length} 项任务</span></div><div class="hxx-plan-strategy-grid"><div><span>核心策略</span><b>${escapeReviewText(plan.strategy.core)}</b></div><div><span>执行节奏</span><b>${escapeReviewText(plan.strategy.cadence)}</b></div><div><span>已开通渠道</span><b>${plan.strategy.channels.map(escapeReviewText).join('、')}</b></div><div><span>负责人</span><b>${escapeReviewText(plan.strategy.owner)}</b></div><div><span>风险边界</span><b>${escapeReviewText(plan.strategy.riskBoundary)}</b></div><div><span>预期结果</span><b>${escapeReviewText(plan.strategy.expectedResult)}</b></div></div><div class="hxx-plan-task-list">${operationPlanTaskRows(plan)}</div></section><section class="hxx-plan-section hxx-plan-confirm-section"><div class="hxx-plan-section-title"><div><span>03 · 人工确认</span><h3>是否确认</h3></div></div>${pending?`<div class="hxx-plan-confirm-copy"><div><b>未调整的拟任务默认接受</b><span>确认后批量创建全部正式任务；任一步失败时整批回滚。</span></div><button class="btn pri" data-hxx-action="confirm-operation-plan">确认并生成任务</button></div><div class="hxx-plan-boundary">确认不代表自动对外发布、发送消息、报价或承诺结果。</div>`:`<div class="hxx-plan-confirm-record"><div><span>确认人</span><b>${escapeReviewText(plan.confirmedBy||'系统记录')}</b></div><div><span>确认时间</span><b>${escapeReviewText(plan.confirmedAt||'历史记录')}</b></div><div><span>正式任务数</span><b>${plan.formalTaskIds.length} 项</b></div><div><span>执行进度</span><b>${plan.progress}%</b></div></div>${operationPlanFormalTasks(plan)}`}</section></div>`;}
+  function renderOperationPlan(){const root=document.querySelector('#hxxOperationPlan');if(!root)return;const plan=selectedOperationPlan();root.innerHTML=operationPlanState.view==='task'&&plan?operationPlanTaskView(plan,selectedOperationDraftTask()):operationPlanState.view==='detail'&&plan?operationPlanDetailView(plan):operationPlanListView();}
+
+  function bindInteractions(){
+    document.addEventListener('change',event=>{const filter=event.target.closest('[data-hxx-plan-filter]');if(!filter)return;const key=filter.dataset.hxxPlanFilter;operationPlanState[key]=filter.value;if(key==='type'){operationPlanState.weekDate='';operationPlanState.month='';}renderOperationPlan();},true);
+    document.addEventListener('click',event=>{
+      const login=event.target.closest('[data-act="do-login"]');if(login){event.preventDefault();event.stopImmediatePropagation();document.querySelector('#login').style.display='none';document.body.classList.remove('login-active');navigate('home');return;}
+      const contentSubview=event.target.closest('[data-hxx-content-subview]');if(contentSubview){event.preventDefault();navigate('marketing-materials',{subview:contentSubview.dataset.hxxContentSubview});return;}
+      const nav=event.target.closest('[data-hxx-route]');if(nav){event.preventDefault();navigate(nav.dataset.hxxRoute);return;}
+      const knowledgeView=event.target.closest('[data-hxx-knowledge-view]');if(knowledgeView){event.preventDefault();knowledgeState.view=knowledgeView.dataset.hxxKnowledgeView;renderKnowledgeView();return;}
+      const managementGroup=event.target.closest('[data-hxx-management-group]');if(managementGroup){event.preventDefault();knowledgeState.manageGroup=managementGroup.dataset.hxxManagementGroup;renderKnowledgeManagement();return;}
+      const managementTypeNode=event.target.closest('[data-hxx-management-type]');if(managementTypeNode){event.preventDefault();knowledgeState.manageType=managementTypeNode.dataset.hxxManagementType;renderKnowledgeManagement();return;}
+      const domain=event.target.closest('[data-hxx-knowledge-domain]');if(domain){event.preventDefault();knowledgeState.view='query';knowledgeState.domain=domain.dataset.hxxKnowledgeDomain;knowledgeState.category='全部';knowledgeState.query='';renderKnowledgeView();const input=document.querySelector('#hxxKnowledgeSearch');if(input)input.value='';renderKnowledgeWorkspace();return;}
+      const filter=event.target.closest('[data-hxx-knowledge-filter]');if(filter){event.preventDefault();const key=filter.dataset.hxxKnowledgeFilter;knowledgeState[key]=filter.dataset.hxxFilterValue;if(key==='category')knowledgeState.domain='全部知识';renderKnowledgeWorkspace();return;}
+      const searchMode=event.target.closest('[data-hxx-search-mode]');if(searchMode){event.preventDefault();knowledgeState.searchMode=searchMode.dataset.hxxSearchMode;renderKnowledgeWorkspace();return;}
+      const knowledgeResultNode=event.target.closest('[data-hxx-knowledge-result]');if(knowledgeResultNode){event.preventDefault();knowledgeState.selectedId=knowledgeResultNode.dataset.hxxKnowledgeResult;renderKnowledgeWorkspace();return;}
+      const act=event.target.closest('[data-hxx-action]');if(act){event.preventDefault();action(act.dataset.hxxAction,act);return;}
+      const node=event.target.closest('[data-hxx-graph]');if(node){document.querySelector('#hxxGraphDetail').innerHTML=`<div class="hxx-callout"><b>${node.dataset.hxxGraph}</b><span>正式实体 · 可用于检索与关联推理</span></div><div class="hxx-list" style="margin-top:12px"><div class="hxx-list-item"><div><b>关联知识</b><p>18 条正式知识 · 2 条候选知识</p></div>${badge('可追溯','ok')}</div><div class="hxx-list-item"><div><b>证据锚点</b><p>原文页码、条款和发布时间已定位</p></div>${badge('已定位','info')}</div></div>`;return;}
+    },true);
+    document.addEventListener('keydown',event=>{if(event.key!=='Enter')return;if(event.target?.id==='hxxKnowledgeSearch'){event.preventDefault();action('knowledge-search',event.target);}if(event.target?.matches('[data-hxx-review-search]')){event.preventDefault();action('review-search',event.target);}});
+    document.addEventListener('input',event=>{const search=event.target.closest('[data-hxx-prompt-search]');if(search){promptSearchQuery=search.value;renderPromptRows();}});
+    document.addEventListener('change',event=>{const roleModule=event.target.closest('[data-hxx-role-module]');if(roleModule){const row=roleModule.closest('[data-hxx-role-module-row]');row?.querySelectorAll('[data-hxx-role-button]').forEach(child=>{child.checked=roleModule.checked;});roleModule.indeterminate=false;return;}const roleButton=event.target.closest('[data-hxx-role-button]');if(roleButton){syncRoleTreeState(roleButton.closest('[data-hxx-role-module-row]'));return;}const promptFilter=event.target.closest('[data-hxx-prompt-filter]');if(promptFilter){promptFeatureFilter=promptFilter.value;renderPromptRows();return;}const logFilter=event.target.closest('[data-hxx-log-filter]');if(logFilter){logTypeFilter=logFilter.value;renderLogRows();return;}const reviewTypeFilter=event.target.closest('[data-hxx-review-type-filter]');if(reviewTypeFilter){reviewTaskTypeFilter=reviewTypeFilter.value;reviewOrigin='';optimizationSuggestionFilter='all';renderReviewWorkQueue();return;}const category=event.target.closest('[data-hxx-review-category]');if(category){if(category.checked)reviewCategoryFilters.add(category.value);else reviewCategoryFilters.delete(category.value);renderReviewWorkQueue();return;}const setting=event.target.closest('[data-hxx-setting]');if(setting?.type==='checkbox')hxxToast(`${setting.dataset.hxxSetting}已${setting.checked?'开启':'关闭'}`);});
+  }
+
+  mountShell();mountPages();configureReusedAiCapabilities();renderOperationPlan();bindInteractions();
+  window.hxxNavigate=(route,subview='')=>navigate(route,subview?{subview}:{});window.HXX_PRODUCT_RULES=HXX_PRODUCT_RULES;
+  if(typeof inheritedReviewState==='function')window.reviewState=state=>routeMeta[state]?navigate(state):inheritedReviewState(state);
+  const requestedParams=new URLSearchParams(location.search),requested=requestedParams.get('review'),requestedSubview=requestedParams.get('subview');
+  if(requested&&routeMeta[requested]){const login=document.querySelector('#login');if(login)login.style.display='none';document.body.classList.remove('login-active');navigate(requested,{subview:requestedSubview});}else navigate('home');
+})();

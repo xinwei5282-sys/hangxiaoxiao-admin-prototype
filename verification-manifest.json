@@ -1,0 +1,21 @@
+{
+  "defaultFullCapture": "prototype/scripts/capture-hangxiaoxiao-admin.mjs",
+  "desktopOnly": true,
+  "fullTests": [
+    "hangxiaoxiao-admin-alignment.test.mjs",
+    "consumer-protection-knowledge.test.mjs",
+    "commercial-workflows.test.mjs",
+    "remotion-video-workflow.test.mjs"
+  ],
+  "focuses": {
+    "hangxiaoxiao": {
+      "tests": [
+        "hangxiaoxiao-admin-alignment.test.mjs",
+        "consumer-protection-knowledge.test.mjs",
+        "commercial-workflows.test.mjs",
+        "remotion-video-workflow.test.mjs"
+      ],
+      "capture": "prototype/scripts/capture-hangxiaoxiao-admin.mjs"
+    }
+  }
+}

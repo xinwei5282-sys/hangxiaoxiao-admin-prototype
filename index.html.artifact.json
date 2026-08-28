@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "kind": "html",
+  "title": "杭小消知识运营平台后台原型",
+  "entry": "prototype/index.html",
+  "renderer": "html",
+  "status": "complete",
+  "exports": [
+    "html",
+    "pdf",
+    "zip"
+  ],
+  "createdAt": "2026-08-25T00:00:00.000Z",
+  "updatedAt": "2026-08-25T00:00:00.000Z",
+  "metadata": {
+    "inferred": false,
+    "reconciled": true,
+    "product": "hangxiaoxiao-admin",
+    "sourceProduct": "ai-huoke"
+  }
+}

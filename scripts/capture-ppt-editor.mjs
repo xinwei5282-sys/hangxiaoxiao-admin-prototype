@@ -1,0 +1,13 @@
+const args=Object.fromEntries(process.argv.slice(2).reduce((rows,item,index,list)=>{if(item.startsWith('--'))rows.push([item.slice(2),list[index+1]]);return rows;},[]));
+const port=Number(args.port||9228),width=Number(args.width||1440),height=Number(args.height||900);
+const targets=await fetch(`http://127.0.0.1:${port}/json`).then(response=>response.json());
+const target=targets.find(item=>item.type==='page'&&/^http:\/\/127\.0\.0\.1:8010\/index\.html/.test(item.url));
+if(!target)throw new Error('PPT prototype page not found');
+const socket=new WebSocket(target.webSocketDebuggerUrl);await new Promise((resolve,reject)=>{socket.addEventListener('open',resolve,{once:true});socket.addEventListener('error',reject,{once:true});});
+let nextId=0;const waiting=new Map();socket.addEventListener('message',event=>{const message=JSON.parse(event.data);if(message.id&&waiting.has(message.id)){const pending=waiting.get(message.id);waiting.delete(message.id);message.error?pending.reject(new Error(message.error.message)):pending.resolve(message.result);}});
+function send(method,params={}){const id=++nextId;socket.send(JSON.stringify({id,method,params}));return new Promise((resolve,reject)=>waiting.set(id,{resolve,reject}));}
+async function evaluate(expression){const result=await send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(result.exceptionDetails)throw new Error(result.exceptionDetails.text);return result.result.value;}
+await send('Runtime.enable');await send('Page.enable');await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:width<=560});await send('Page.reload',{ignoreCache:true});await new Promise(resolve=>setTimeout(resolve,1000));
+const audit=await evaluate(`(() => {document.querySelector('#login').style.display='none';openPptDetail('ppt-demo-ready');const list=document.querySelector('#pptEditorThumbnails'),rail=document.querySelector('.ppt-slide-rail'),mobile=innerWidth<=900,before=mobile?list.scrollLeft:list.scrollTop;if(mobile)list.scrollLeft=160;else list.scrollTop=160;return {mobile,railHeight:rail.clientHeight,listHeight:list.clientHeight,listScrollHeight:list.scrollHeight,listWidth:list.clientWidth,listScrollWidth:list.scrollWidth,before,after:mobile?list.scrollLeft:list.scrollTop,overflow:mobile?getComputedStyle(list).overflowX:getComputedStyle(list).overflowY,shellHeight:document.querySelector('#pptEditorWorkspace').clientHeight};})()`);
+console.log(JSON.stringify(audit,null,2));socket.close();
+if((audit.mobile?audit.listScrollWidth<=audit.listWidth:audit.listScrollHeight<=audit.listHeight)||audit.after<=audit.before)process.exitCode=1;
