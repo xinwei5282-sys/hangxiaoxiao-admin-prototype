@@ -175,7 +175,7 @@ test('material review shows actual selected assets and editable scene controls',
   for (const token of ['分镜素材与首尾帧', 'remixMaterialList', 'remix-material-card', '对应口播', '需 10.0s · 可用 12.4s', '企业素材库', '人工上传', 'AI 生成', 'preview-remix-material', 'replace-remix-material', 'delete-remix-material', 'remixMainShot']) {
     assert.match(html, new RegExp(token));
   }
-  assert.match(remix, /<img src="\.\.\/remotion\/beauty-shoulder-relaxation\/public\/assets\/scene-01\.png"/);
+  assert.match(remix, /<img src="assets\/demo\/remix\/scene-01\.png"/);
   assert.match(remix, /<video src="assets\/demo\/ai-gen\.mp4"/);
   assert.doesNotMatch(remix, /crop-remix-material|裁剪/);
   assert.doesNotMatch(remix, />已选分镜素材</);

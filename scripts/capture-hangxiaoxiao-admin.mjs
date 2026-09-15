@@ -909,6 +909,8 @@ interactions.dashboardIsOperationsOverview = await evaluate(`(() => {
   const page=document.querySelector('.page.show');
   const showcase=document.querySelector('#hxxLeadershipShowcase');
   const text=showcase?.textContent||'';
+  const metricLabels=[...showcase.querySelectorAll('[data-hxx-showcase-metric] small')].map(node=>node.textContent.trim());
+  const metricIcons=[...showcase.querySelectorAll('[data-hxx-showcase-metric] .hxx-showcase-metric-icon')].map(node=>node.dataset.icon);
   const rail=document.querySelector('.rail');
   const top=document.querySelector('.top');
   const valid=document.body.classList.contains('hxx-dashboard-mode')
@@ -916,10 +918,18 @@ interactions.dashboardIsOperationsOverview = await evaluate(`(() => {
     && Boolean(showcase)
     && getComputedStyle(rail).display==='none'
     && getComputedStyle(top).display==='none'
-    && ['杭州市消费者权益保护委员会','消费教育数字化运营大屏','杭小消智慧消费服务','知识资源概览','今日新增','服务触达','消费咨询热点','平台运行监测','平台可用率','系统运行稳定'].every(label=>text.includes(label))
+    && ['杭州市消费者权益保护委员会','消费教育数字化运营大屏','杭小消智慧消费服务','知识资源概览','消费咨询热点','咨询分类占比','咨询时段分布','平台运行监测','平台可用率','当前咨询在线人数','平均响应时长','系统运行稳定'].every(label=>text.includes(label))
     && !['项目成果','建设成果','近期建设成效','多模态知识中台','AI 内容生产','微官网传播矩阵','待审核','失败任务','剩余额度','导出','内部治理','全屏展示'].some(label=>text.includes(label))
     && showcase.querySelectorAll('[data-hxx-showcase-metric]').length===5
+    && JSON.stringify(metricLabels)===JSON.stringify(['知识采集量','新增入库量','知识总量','当前咨询在线人数','平均响应时长'])
+    && showcase.classList.contains('hxx-showcase-reference')
+    && Boolean(showcase.querySelector('.hxx-showcase-brand-anchor img'))
+    && showcase.querySelector('.hxx-showcase-title-lockup h1')?.textContent.trim()==='消费教育数字化运营大屏'
+    && JSON.stringify(metricIcons)===JSON.stringify(['source','review','works','members','trend'])
+    && showcase.querySelectorAll('[data-hxx-showcase-metric] .hxx-showcase-metric-icon svg').length===5
     && showcase.querySelectorAll('[data-hxx-showcase-resource]').length===5
+    && Boolean(showcase.querySelector('[data-hxx-consultation-share]'))
+    && showcase.querySelectorAll('[data-hxx-consultation-hour]').length===6
     && !showcase.querySelector('[data-hxx-showcase-capability]')
     && Boolean(showcase.querySelector('[data-hxx-showcase-trend] svg'))
     && showcase.querySelectorAll('[data-hxx-showcase-hotspot]').length>=5;

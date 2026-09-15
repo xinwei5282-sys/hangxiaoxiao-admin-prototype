@@ -26,7 +26,7 @@ test('operation plan defines statuses, periods, idempotency and formal task sema
 });
 
 test('page and formal PRDs define auditable metric calculations',()=>{
-  for(const token of ['计算逻辑','metric_version','Asia/Shanghai','分母为 0','正式知识','今日采集候选','待人工处理','知识调用','公众服务次数','渠道触达','热点咨询','内容结构占比','可用率','响应时长','运行渠道','执行进度','逾期任务数','热度指数','增长趋势','实体链接准确率','知识可信度','内容质量与效果','学习价值','知识域维护状态','共享总额度','已用量','冻结量','剩余额度','通知未读数','日志结果数','去重主键','刷新频率','下钻明细']) assert.match(pagePrd+prdDoc,new RegExp(token));
+  for(const token of ['计算逻辑','metric_version','Asia/Shanghai','分母为 0','正式知识','今日采集候选','待人工处理','知识调用','知识采集量','新增入库量','知识总量','公众服务次数','热点咨询','咨询分类占比','当前咨询在线人数','咨询时段分布','平台可用率','平均响应时长','智能问答响应率','运行渠道','知识来源渠道','多模态内容量','知识与服务增长趋势','知识引用准确率','TOP 5 咨询覆盖率','自然周','自然月','C端','近 5 分钟','首个有效应答片段','统计截止时间','执行进度','逾期任务数','热度指数','增长趋势','实体链接准确率','知识可信度','内容质量与效果','学习价值','知识域维护状态','共享总额度','已用量','冻结量','剩余额度','通知未读数','日志结果数','去重主键','刷新频率','下钻明细']) assert.match(pagePrd+prdDoc,new RegExp(token));
 });
 
 test('operation plan validates tasks, confirms atomically and supports regeneration',()=>{
