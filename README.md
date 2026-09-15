@@ -7,6 +7,7 @@
 - 页面真源：`index.html`
 - 杭小消适配层：`scripts/hangxiaoxiao-admin.js`、`assets/hangxiaoxiao-admin.css`
 - 页面说明：`scripts/hangxiaoxiao-page-prd.js`
+- PRD 发布快照：`docs/hangxiaoxiao-admin-page-prd.md`，用于仓库独立运行测试；需求变更时从项目正式 PRD 同步更新。
 
 ## 发布
 
