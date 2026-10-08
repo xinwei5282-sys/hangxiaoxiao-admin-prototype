@@ -1,4 +1,5 @@
 import test from 'node:test';
+import vm from 'node:vm';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 
@@ -400,4 +401,58 @@ test('notification center has an independent PRD and PPT list has no summary sta
   assert.doesNotMatch(materialPptSource, /workspace-summary|pptTotalCount|pptGeneratingCount|pptReadyCount|最新版本/);
   assert.match(materialPptSource, /pptArtifactList/);
   assert.doesNotMatch(html, /id="pptTotalCount"|id="pptGeneratingCount"|id="pptReadyCount"/);
+});
+
+
+function uploadWorkflow() {
+  const start = js.indexOf('  function processUploadedKnowledge(');
+  assert.notEqual(start, -1, 'upload intake must process the check result');
+  const source = js.slice(start, js.indexOf('  function openKnowledgeUpload(', start));
+  const context = vm.createContext({ HXX_KNOWLEDGE_ITEMS: [], HXX_REVIEW_WORK_ITEMS: [], HXX_LOG_RECORDS: [] });
+  vm.runInContext(source, context);
+  return { context, submit: input => context.processUploadedKnowledge(input) };
+}
+const uploadInput = overrides => ({uploadId:'upload-test', fileName:'消费提示.txt', source:'消保委业务资料', domain:'消费提示', check:{status:'completed',issues:[]}, ...overrides});
+
+test('clean upload becomes searchable formal knowledge without a manual review task and records automatic approval', () => {
+  const { context, submit } = uploadWorkflow();
+  const result = submit(uploadInput());
+  assert.equal(result.status, 'published');
+  assert.equal(context.HXX_KNOWLEDGE_ITEMS[0].status, '已发布');
+  assert.equal(context.HXX_KNOWLEDGE_ITEMS[0].title, '消费提示.txt');
+  assert.equal(context.HXX_REVIEW_WORK_ITEMS.length, 0);
+  assert.equal(context.HXX_LOG_RECORDS[0].actor, '系统自动审核');
+  assert.match(context.HXX_LOG_RECORDS[0].object, /upload-test.*v1.0/);
+  submit(uploadInput());
+  assert.equal(context.HXX_KNOWLEDGE_ITEMS.length, 1, 'same upload callback cannot publish twice');
+  assert.equal(context.HXX_LOG_RECORDS.length, 1);
+});
+
+test('upload with anomalies remains unpublished and preserves the reason in a manual review task', () => {
+  const { context, submit } = uploadWorkflow();
+  const result = submit(uploadInput({check:{status:'completed',issues:['版本冲突']}}));
+  assert.equal(result.status, 'review');
+  assert.equal(context.HXX_KNOWLEDGE_ITEMS.filter(item => item.status === '已发布').length, 0);
+  assert.match(context.HXX_REVIEW_WORK_ITEMS[0].candidates[0].value, /版本冲突/);
+  assert.equal(context.HXX_REVIEW_WORK_ITEMS[0].candidates[0].knowledgeId, 'upload-test');
+});
+
+test('failed checks route to review while pending, missing or malformed check results never auto-publish', () => {
+  for (const check of [undefined, {status:'pending'}, {status:'completed'}, {status:'completed',issues:null}, {status:'failed',issues:[]}]) {
+    const { context, submit } = uploadWorkflow();
+    const result = submit(uploadInput({check}));
+    assert.notEqual(result.status, 'published');
+    assert.equal(context.HXX_KNOWLEDGE_ITEMS.filter(item => item.status === '已发布').length, 0);
+    if(check?.status === 'failed') {
+      assert.equal(result.status, 'review');
+      assert.match(context.HXX_REVIEW_WORK_ITEMS[0].candidates[0].value, /检查失败/);
+    }
+  }
+});
+
+test('missing upload file cannot create knowledge or audit records', () => {
+  const { context, submit } = uploadWorkflow();
+  assert.equal(submit(uploadInput({fileName:''})).status, 'invalid');
+  assert.equal(context.HXX_KNOWLEDGE_ITEMS.length, 0);
+  assert.equal(context.HXX_LOG_RECORDS.length, 0);
 });

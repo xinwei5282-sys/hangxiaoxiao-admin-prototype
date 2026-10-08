@@ -5,7 +5,9 @@
     "hangxiaoxiao-admin-alignment.test.mjs",
     "consumer-protection-knowledge.test.mjs",
     "commercial-workflows.test.mjs",
-    "remotion-video-workflow.test.mjs"
+    "remotion-video-workflow.test.mjs",
+    "hangxiaoxiao-knowledge-flows.test.mjs",
+    "hangxiaoxiao-service-flows.test.mjs"
   ],
   "focuses": {
     "hangxiaoxiao": {
@@ -13,7 +15,9 @@
         "hangxiaoxiao-admin-alignment.test.mjs",
         "consumer-protection-knowledge.test.mjs",
         "commercial-workflows.test.mjs",
-        "remotion-video-workflow.test.mjs"
+        "remotion-video-workflow.test.mjs",
+        "hangxiaoxiao-knowledge-flows.test.mjs",
+        "hangxiaoxiao-service-flows.test.mjs"
       ],
       "capture": "prototype/scripts/capture-hangxiaoxiao-admin.mjs"
     }

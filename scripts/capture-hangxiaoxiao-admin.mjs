@@ -500,7 +500,7 @@ interactions.knowledgeUploadOpensReviewIntake = await evaluate(`(() => {
     && Boolean(document.querySelector('#hxxUploadFile'))
     && Boolean(document.querySelector('#hxxUploadSource'))
     && Boolean(document.querySelector('#hxxUploadDomain'))
-    && modal.textContent.includes('提交后进入知识审核');
+    && modal.textContent.includes('无异常默认通过');
   return Boolean(valid);
 })()`);
 await wait(80);
@@ -1023,6 +1023,159 @@ interactions.qualityRefreshKeepsSingleHangxiaoxiaoPage = await evaluate(`(() => 
     && !document.querySelector('[data-kbpanel="evolution"]')
     && !document.querySelector('[data-kbpanel="governance"]');
 })()`);
+
+await evaluate(`window.hxxNavigate('home')`);
+interactions.uploadRequiresFile = await evaluate(`(() => {
+  document.querySelector('.page.show [data-hxx-action="upload-demo"]').click();
+  document.querySelector('#modal [data-mo]').click();
+  return document.querySelector('#mask').classList.contains('show') && document.querySelector('#toasts').textContent.includes('请先选择');
+})()`);
+interactions.uploadPendingDoesNotPublish = await evaluate(`(() => {
+  const transfer=new DataTransfer();transfer.items.add(new File(['演示内容'],'上传流程验收.txt',{type:'text/plain'}));document.querySelector('#hxxUploadFile').files=transfer.files;
+  document.querySelector('#hxxUploadCheck').value='pending';document.querySelector('#modal [data-mo]').click();
+  return document.querySelector('#mask').classList.contains('show') && document.querySelector('.page.show').dataset.p==='home' && !document.querySelector('#hxxKnowledgeResults').textContent.includes('上传流程验收.txt');
+})()`);
+interactions.cleanUploadAppearsInEnterpriseBrain = await evaluate(`(() => {
+  document.querySelector('#hxxUploadCheck').value='clean';document.querySelector('#modal [data-mo]').click();
+  const result=[...document.querySelectorAll('[data-hxx-knowledge-result]')].find(node=>node.textContent.includes('上传流程验收.txt'));
+  return !document.querySelector('#mask').classList.contains('show') && document.querySelector('.page.show').dataset.p==='knowledge' && result?.textContent.includes('已发布') && document.querySelector('#hxxKnowledgePreview').textContent.includes('上传流程验收.txt');
+})()`);
+await wait(300);
+await screenshot('upload-auto-published');
+interactions.uploadVersionShowsOnlyItsActualVersion = await evaluate(`(() => {
+  document.querySelector('[data-hxx-knowledge-view="manage"]').click();
+  const row=[...document.querySelectorAll('[data-hxx-managed-formal]')].find(node=>node.textContent.includes('上传流程验收.txt'));
+  row?.querySelector('[data-hxx-action="managed-version"]').click();
+  const text=document.querySelector('#modal').textContent;window.closeModal();
+  return text.includes('系统自动审核通过') && text.includes('v1.0') && !text.includes('历史版本');
+})()`);
+interactions.cleanUploadHasNoManualTask = await evaluate(`(() => {
+  window.hxxNavigate('review');
+  return !document.querySelector('#hxxReviewWorkQueue').textContent.includes('上传流程验收.txt');
+})()`);
+interactions.cleanUploadAuditIsTraceable = await evaluate(`(() => {
+  window.hxxNavigate('logs');const filter=document.querySelector('[data-hxx-log-filter]');filter.value='operation';filter.dispatchEvent(new Event('change',{bubbles:true}));
+  const row=[...document.querySelectorAll('[data-hxx-log-row]')].find(node=>node.textContent.includes('上传知识自动通过并发布'));row?.querySelector('[data-hxx-action="view-log-detail"]').click();
+  const text=document.querySelector('#modal').textContent;window.closeModal();
+  return text.includes('系统自动审核')&&text.includes('上传流程验收.txt')&&text.includes('无异常')&&text.includes('v1.0');
+})()`);
+interactions.anomalousUploadRoutesToItsOwnReview = await evaluate(`(() => {
+  window.hxxNavigate('knowledge');document.querySelector('.page.show [data-hxx-action="upload-demo"]').click();
+  const transfer=new DataTransfer();transfer.items.add(new File(['冲突演示'],'异常上传验收.txt',{type:'text/plain'}));document.querySelector('#hxxUploadFile').files=transfer.files;
+  document.querySelector('#hxxUploadCheck').value='conflict';document.querySelector('#modal [data-mo]').click();
+  return document.querySelector('.page.show').dataset.p==='review' && document.querySelector('#hxxReviewWorkQueue').textContent.includes('异常上传验收.txt') && document.querySelector('#hxxReviewWorkQueue').textContent.includes('版本冲突') && !document.querySelector('#hxxKnowledgeResults').textContent.includes('异常上传验收.txt');
+})()`);
+await wait(300);
+await screenshot('upload-anomaly-review');
+interactions.uploadChecksDoNotOverflow = await evaluate(`document.documentElement.scrollWidth<=innerWidth`);
+
+// 企业大脑 v1.4 新流程：在全新会话中从真实页面控件推进。
+await send('Page.navigate', {url:'http://127.0.0.1:8010/index.html?review=knowledge'});
+await wait(600);
+await evaluate(`document.querySelector('[data-hxx-knowledge-view="manage"]').click()`);
+await wait(50);
+interactions.brainDraftPreservesPublished = await evaluate(`(() => {
+  document.querySelector('[data-hxx-managed-formal="qa-prepay-close"] [data-hxx-flow="revise"]').click();
+  document.querySelector('[data-kf-field="body"]').value='浏览器验收：保存付款凭证、记录协商和退款进度。';
+  document.querySelector('#modal [data-mo]').click();
+  const s=HxxKnowledgeFlows.store;
+  const draft=s.state.drafts[0];
+  const isolated=draft.status==='草稿'&&s.get('qa-prepay-close').version==='v1.3'&&!s.get('qa-prepay-close').body.includes('浏览器验收');
+  document.querySelector('[data-kf-drafts] [data-hxx-flow="submit"]').click();
+  window.hxxNavigate('review');
+  return isolated&&document.querySelector('[data-kf-reviews]').textContent.includes('预付卡商家闭店');
+})()`);
+await evaluate(`document.querySelector('[data-kf-reviews]').closest('section').scrollIntoView({block:'start'})`);
+await wait(120);
+await screenshot('brain-revision-review');
+interactions.brainApprovalPublishesNewVersion = await evaluate(`(() => {
+  document.querySelector('[data-kf-reviews] [data-hxx-flow="approve"]').click();
+  const s=HxxKnowledgeFlows.store, item=s.get('qa-prepay-close');
+  window.hxxNavigate('knowledge');document.querySelector('[data-hxx-knowledge-view="query"]').click();
+  return item.version==='v1.4'&&s.state.histories[item.id][0].version==='v1.3'&&document.querySelector('#hxxKnowledgeResults').textContent.includes('v1.4');
+})()`);
+interactions.brainArchiveRestoreNeedsApproval = await evaluate(`(() => {
+  document.querySelector('[data-hxx-knowledge-view="manage"]').click();
+  document.querySelector('[data-hxx-managed-formal="qa-prepay-close"] [data-hxx-flow="archive"]').click();
+  document.querySelector('[data-kf-field="reason"]').value='演示下架复核';document.querySelector('#modal [data-mo]').click();
+  const s=HxxKnowledgeFlows.store,removed=!HxxServiceFlows.service.search('预付卡商家闭店').some(i=>i.id==='qa-prepay-close');
+  document.querySelector('[data-kf-archives] [data-hxx-flow="restore"]').click();
+  const pending=s.get('qa-prepay-close').status==='已归档';
+  document.querySelector('[data-kf-drafts] [data-hxx-flow="submit"]').click();window.hxxNavigate('review');
+  document.querySelector('[data-kf-reviews] [data-hxx-flow="approve"]').click();
+  return removed&&pending&&s.get('qa-prepay-close').version==='v1.5';
+})()`);
+interactions.brainConflictCompareAndSplit = await evaluate(`(() => {
+  document.querySelector('[data-hxx-action="toggle-review-work"][data-work-id="review-prepay-rule"]').click();
+  HxxKnowledgeFlows.enhance();document.querySelector('[data-hxx-flow="compare"][data-candidate-id="prepay-version"]').click();
+  const shown=document.querySelector('#modal').textContent.includes('受影响知识')&&document.querySelector('#modal').textContent.includes('第 12 条');
+  document.querySelector('[data-kf-field="decision"]').value='split';document.querySelector('[data-kf-field="old-scope"]').value='原合同存续期间';document.querySelector('[data-kf-field="new-scope"]').value='新合同生效期间';
+  document.querySelector('#modal [data-mo]').click();
+  return shown&&HxxKnowledgeFlows.store.state.items.some(i=>i.id.includes('-split-')&&i.scope==='新合同生效期间');
+})()`);
+interactions.brainLabelDisplayAndFilters = await evaluate(`(() => {
+  window.hxxNavigate('knowledge');document.querySelector('[data-hxx-knowledge-view="query"]').click();
+  document.querySelector('[data-hxx-flow="select-tag"][data-tag="商家跑路"]').click();
+  const filtered=document.querySelector('#hxxKnowledgeResultCount').dataset.count==='1';
+  document.querySelector('[data-hxx-flow="configure-labels"][data-key="tags"]').click();
+  const option=[...document.querySelectorAll('[data-kf-visible-label]')].find(n=>n.value==='商家跑路');option.checked=false;
+  document.querySelector('#modal [data-mo]').click();
+  const removed=!document.querySelector('[data-hxx-flow="select-tag"][data-tag="商家跑路"]')&&!HxxKnowledgeFlows.store.state.queryTags.includes('商家跑路');
+  document.querySelector('[data-hxx-flow="configure-labels"][data-key="tags"]').click();
+  [...document.querySelectorAll('[data-kf-visible-label]')].find(n=>n.value==='商家跑路').checked=true;document.querySelector('#modal [data-mo]').click();
+  document.querySelector('[data-kf-sort]').value='updated-desc';document.querySelector('[data-kf-sort]').dispatchEvent(new Event('change',{bubbles:true}));
+  return filtered&&removed&&!!document.querySelector('[data-hxx-flow="select-tag"][data-tag="商家跑路"]');
+})()`);
+await screenshot('brain-query-tags');
+interactions.brainQaAndRetest = await evaluate(`(() => {
+  window.hxxNavigate('quality');document.querySelector('[data-sf-question]').value='预付卡商家闭店怎么退款？';
+  document.querySelector('[data-sf-expected]').value='qa-prepay-close';document.querySelector('[data-sf-action="run-qa"]').click();
+  const answered=document.querySelector('[data-sf-results]').textContent.includes('v1.5');
+  document.querySelector('[data-sf-action="add-case"]').click();document.querySelector('[data-sf-action="retest"]').click();
+  return answered&&document.querySelector('[data-sf-tests]').textContent.includes('命中预期知识');
+})()`);
+await evaluate(`document.querySelector('[data-sf-mount="qa"]').scrollIntoView({block:'start'})`);
+await wait(120);
+await screenshot('brain-multimodal-qa');
+interactions.brainAttachmentAndAssetFailureStates = await evaluate(`(() => {
+  document.querySelector('[data-sf-scenario]').value='failed';document.querySelector('[data-sf-action="run-qa"]').click();
+  const failed=document.querySelector('[data-sf-results]').textContent.includes('解析失败');
+  document.querySelector('[data-sf-scenario]').value='stale';document.querySelector('[data-sf-action="run-qa"]').click();
+  return failed&&document.querySelector('[data-sf-results]').textContent.includes('素材已失效');
+})()`);
+interactions.brainAssetReviewReturnsToKnowledge = await evaluate(`(() => {
+  window.hxxNavigate('create');document.querySelector('.page.show [data-sf-action="archive-asset"]').click();
+  const set=(k,v)=>document.querySelector('[data-sf-input="'+k+'"]').value=v;
+  set('title','退款流程验收海报');set('sourceId','poster-browser-01');set('source','qa-prepay-close');set('copyright','消保委原创示例授权');set('usage','公众问答');
+  document.querySelector('#modal [data-mo]').click();
+  const s=HxxServiceFlows.service,a=s.state.assets[0],notReady=!s.search('退款流程验收海报').some(i=>i.id===a.knowledgeId);
+  document.querySelector('.page.show [data-sf-action="review-candidate"]').click();document.querySelector('#modal [data-mo]').click();
+  window.hxxNavigate('knowledge');document.querySelector('[data-hxx-knowledge-view="query"]').click();document.querySelector('#hxxKnowledgeSearch').value='退款流程验收海报';document.querySelector('[data-hxx-action="knowledge-search"]').click();
+  return notReady&&document.querySelector('#hxxKnowledgeResults').textContent.includes('退款流程验收海报')&&s.search('退款流程验收海报').some(i=>i.id===a.knowledgeId)&&HxxKnowledgeFlows.store.get('qa-prepay-close').version==='v1.5';
+})()`);
+interactions.brainBatchCountsAndRetry = await evaluate(`(() => {
+  window.hxxNavigate('sources');document.querySelector('[data-sf-action="sync-batch"]').click();
+  const s=HxxServiceFlows.service,b=s.state.batches[0],before=b.ingested===0&&b.pending===2&&b.failed===1;
+  document.querySelector('[data-sf-action="retry-batch"]').click();
+  const retried=b.failed===0&&b.pending===3&&b.entries.filter(e=>e.retryCount===1).length===1;
+  document.querySelector('[data-sf-batches] details').open=true;
+  document.querySelector('[data-sf-batches] [data-sf-action="review-candidate"]').click();document.querySelector('#modal [data-mo]').click();
+  return before&&retried&&b.ingested===1&&b.pending===2&&b.duplicate===1;
+})()`);
+await evaluate(`document.querySelector('[data-sf-mount="batches"]').scrollIntoView({block:'start'});document.querySelector('[data-sf-batches] details').open=true`);
+await wait(120);
+await screenshot('brain-collection-batch');
+interactions.brainSessionFeedbackAndExport = await evaluate(`(() => {
+  window.hxxNavigate('logs');document.querySelector('[data-sf-action="feedback"][data-feedback="不满意"]').click();
+  document.querySelector('[data-sf-feedback]').value='不满意';document.querySelector('[data-sf-feedback]').dispatchEvent(new Event('change',{bubbles:true}));
+  const text=document.querySelector('[data-sf-sessions]').textContent,csv=HxxServiceFlows.service.exportSessions({feedback:'不满意'});
+  document.querySelector('[data-sf-action="export-sessions"]').click();
+  return text.includes('第 2 轮')&&text.includes('不满意')&&csv.includes('v1.3')&&csv.split('\\n').length===3;
+})()`);
+await evaluate(`document.querySelector('[data-sf-mount="sessions"]').scrollIntoView({block:'start'})`);
+await wait(120);
+await screenshot('brain-consumer-sessions');
+interactions.brainFlowsNoOverflow=await evaluate(`document.documentElement.scrollWidth<=innerWidth`);
 
 const report = {
   viewport: { width, height },
